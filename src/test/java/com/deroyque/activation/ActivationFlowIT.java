@@ -71,7 +71,7 @@ class ActivationFlowIT {
 
     @BeforeEach
     void reset() {
-        repository.deleteAll();
+        repository.deleteAllInBatch();
         provider.resetAll();
     }
 

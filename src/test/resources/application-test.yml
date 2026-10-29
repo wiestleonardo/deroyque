@@ -1,6 +1,7 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:activation;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    # Um banco por contexto Spring: contextos em cache (com worker ligado) não interferem entre si.
+    url: jdbc:h2:mem:activation-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
     username: sa
     password:
   security:

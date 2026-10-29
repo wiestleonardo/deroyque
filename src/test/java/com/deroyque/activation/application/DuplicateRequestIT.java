@@ -32,7 +32,7 @@ class DuplicateRequestIT {
 
     @BeforeEach
     void cleanDatabase() {
-        repository.deleteAll();
+        repository.deleteAllInBatch();
     }
 
     private static CreateActivationCommand command(String client, String externalId, String product) {
