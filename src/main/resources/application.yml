@@ -37,6 +37,8 @@ server:
     include-message: never
 
 logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
   level:
     # Violação da constraint de externalId é um caminho esperado (corrida tratada no serviço);
     # erros SQL reais continuam chegando ao log pelas exceções propagadas.

@@ -1,0 +1,5 @@
+# Produção: logs estruturados em JSON (ECS) com correlationId do MDC em cada linha.
+logging:
+  structured:
+    format:
+      console: ecs
