@@ -1,0 +1,9 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.iml
+.idea/
+.vscode/
+*.log
+.DS_Store
+# Enunciado do desafio (não faz parte da solução)
+desafio-pdf/
