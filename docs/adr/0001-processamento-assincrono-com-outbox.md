@@ -1,22 +1,24 @@
-# ADR 0001 — Processamento assíncrono usando a própria tabela como outbox
+# ADR 0001: processamento assíncrono usando a própria tabela como outbox
 
-**Status:** aceito
+Status: aceito
 
 ## Contexto
-O provedor externo leva ~400 ms e pode degradar para segundos ou ficar fora do ar. Chamar o provedor
-dentro do `POST /api/v1/requests` acopla a latência e a disponibilidade da nossa API à dele, e chamar
-depois do commit sem nenhum registro perde solicitações se a aplicação cair entre o commit e a chamada.
+
+O provedor leva cerca de 400 ms e pode passar para segundos ou cair. Chamar o provedor dentro do
+`POST /api/v1/requests` prende a latência e a disponibilidade da API às dele. Chamar depois do commit,
+sem registro do que falta enviar, perde a solicitação se a aplicação cair entre o commit e a chamada.
 
 ## Decisão
-O `POST` grava a solicitação como `PENDING` e responde. Um worker agendado busca solicitações vencidas
-(`status IN (PENDING, PROCESSING) AND next_attempt_at <= now`) e processa cada uma em três passos:
-reserva em transação curta (`PROCESSING` + lease), chamada HTTP fora de transação, aplicação do
-resultado em transação curta condicionada à versão reservada.
+
+O POST grava a solicitação como `PENDING` e responde. Um job agendado busca as solicitações prontas
+(`PENDING` ou `PROCESSING` com a próxima tentativa vencida) e processa cada uma em três passos: reserva
+numa transação curta, chamada HTTP fora de transação e gravação do resultado numa transação curta,
+só se a versão ainda for a da reserva.
 
 ## Consequências
-- API rápida e estável mesmo com o provedor lento; consumidor acompanha o status pelo `GET`.
-- Nenhuma solicitação gravada é perdida: o estado está no banco; lease vencido = reconciliação.
-- Latência até `COMPLETED` inclui o intervalo de polling (1 s). Aceitável aqui; se não fosse, um evento
-  após o commit poderia acordar o worker imediatamente, mantendo o polling como rede de segurança.
-- Sem broker de mensagens para operar. Com volume muito alto, migraria para fila (SQS/Kafka) alimentada
-  por outbox transacional.
+
+- A API continua rápida com o provedor lento; o consumidor acompanha pelo GET.
+- Nada gravado se perde: o estado está no banco e uma reserva vencida é reprocessada.
+- O tempo até `COMPLETED` inclui o intervalo do job (1 s). Se isso fosse problema, um evento depois do
+  commit poderia acordar o job, mantendo o polling como garantia.
+- Não há broker para operar. Com muito volume, passaria para fila (SQS, Kafka) alimentada por outbox.

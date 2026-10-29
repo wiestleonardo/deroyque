@@ -1,17 +1,23 @@
-# ADR 0003 — Classificação das respostas do provedor e política de retry
+# ADR 0003: classificação das respostas do provedor e política de retentativa
 
-**Status:** aceito
+Status: aceito
 
 ## Decisão
-- 2xx → `COMPLETED`. 4xx (exceto 401/403/408/429) → `FAILED` sem retry.
-- 5xx, 408, timeout, erro de rede, 401/403 → retry. 429/503 → retry respeitando `Retry-After`.
-- Falha temporária volta para `PENDING` com `next_attempt_at` (backoff exponencial com jitter, teto 5 min).
-- Máximo de 5 tentativas; depois `FAILED` com `MAX_ATTEMPTS_EXCEEDED:<motivo>`.
-- Toda chamada envia `Idempotency-Key = id da solicitação`, porque timeout não diz se a ativação ocorreu.
-- O resultado é um `sealed interface ProviderOutcome` (`Success`, `PermanentFailure`, `TransientFailure`)
-  tratado com `switch` exaustivo: um novo tipo de resultado não compila sem ser tratado.
+
+- 2xx: `COMPLETED`. 4xx (fora 401, 403, 408 e 429): `FAILED` sem nova tentativa.
+- 5xx, 408, timeout, erro de rede, 401 e 403: nova tentativa. 429 e 503: nova tentativa respeitando o
+  `Retry-After`.
+- Falha temporária volta para `PENDING` com a próxima tentativa no futuro (backoff exponencial com
+  jitter, teto de 5 min).
+- No máximo 5 tentativas; depois `FAILED` com `MAX_ATTEMPTS_EXCEEDED:<motivo>`.
+- Toda chamada envia `Idempotency-Key` com o id da solicitação, porque o timeout não diz se a ativação
+  aconteceu.
+- O resultado é o `sealed interface ResultadoAtivacaoVO` (`Sucesso`, `FalhaDefinitiva`,
+  `FalhaTemporaria`), tratado com `switch` exaustivo: um tipo novo de resultado não compila sem
+  tratamento.
 
 ## Consequências
-- `PROCESSING` significa apenas "um worker está com ela agora", o que torna a reconciliação trivial.
+
+- `PROCESSING` significa só "um worker está com ela agora", o que simplifica a reconciliação.
 - Depende de o provedor deduplicar pela chave de idempotência; sem isso, seria preciso consultar o
-  status no provedor antes de reenviar após timeout.
+  status no provedor antes de reenviar depois de um timeout.

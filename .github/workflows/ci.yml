@@ -21,7 +21,6 @@ jobs:
           java-version: '21'
           cache: maven
 
-      # Unitários + integração (inclui Testcontainers/PostgreSQL: o runner tem Docker).
       - name: Build e testes
         run: ./mvnw -B verify
 
