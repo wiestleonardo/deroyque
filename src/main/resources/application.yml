@@ -72,6 +72,11 @@ management:
       probes:
         enabled: true
       show-details: never
+      group:
+        # Sem banco a instância não deve receber tráfego; liveness não inclui o banco
+        # (banco fora do ar não se resolve reiniciando a aplicação).
+        readiness:
+          include: readinessState,db
   metrics:
     tags:
       application: ${spring.application.name}
