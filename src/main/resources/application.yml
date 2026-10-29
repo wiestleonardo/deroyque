@@ -45,6 +45,20 @@ logging:
 app:
   http:
     max-request-size: 16KB
+  provider:
+    base-url: ${PROVIDER_BASE_URL:http://localhost:8089}
+    connect-timeout: ${PROVIDER_CONNECT_TIMEOUT:2s}
+    read-timeout: ${PROVIDER_READ_TIMEOUT:3s}
+    api-key: ${PROVIDER_API_KEY:}
+  processing:
+    max-attempts: 5
+    lease: 30s
+    initial-backoff: 2s
+    max-backoff: 5m
+    batch-size: 20
+  worker:
+    enabled: ${WORKER_ENABLED:true}
+    poll-interval: 1s
 
 management:
   endpoints:
