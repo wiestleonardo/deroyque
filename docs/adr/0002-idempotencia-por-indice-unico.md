@@ -10,7 +10,8 @@ inserir deixa uma janela: duas requisições passam pela consulta antes de qualq
 ## Decisão
 
 - O índice único `(cd_sistemaorigem, cd_externo)` é a garantia.
-- A aplicação tenta o INSERT; se o índice recusar, relê o registro vencedor numa transação nova.
+- A aplicação consulta primeiro (o caso comum do retry) e depois faz o INSERT; se o índice recusar, relê o
+  registro vencedor numa transação nova.
 - Mesmo conteúdo responde `200` com o registro existente; conteúdo diferente responde `409`.
 - A unicidade é por sistema de origem, porque o `externalId` pertence a ele.
 

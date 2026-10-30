@@ -15,8 +15,14 @@ Precisa do JDK 21 (o Maven vem pelo wrapper).
 docker compose up --build     # aplicação + PostgreSQL + mock do provedor (WireMock)
 ```
 
-Sem Docker: `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` (H2 em memória; provedor esperado em
-`http://localhost:8089`). Os testes com PostgreSQL usam Testcontainers e são pulados sem Docker.
+Sem Docker, com H2 em memória e o WireMock standalone no papel do provedor:
+
+```bash
+java -jar wiremock-standalone-3.13.2.jar --port 8089 --root-dir docker/wiremock --global-response-templating
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+```
+
+Os testes com PostgreSQL usam Testcontainers e são pulados quando não há Docker.
 
 O perfil `local` habilita `/dev/token`, que emite tokens de teste, já que o desafio não tem servidor de
 autenticação. Nunca é habilitado em produção.
@@ -45,7 +51,9 @@ O mock do provedor responde pelo `productCode`: `REJECT` → 400, `ERROR` → 50
 - Campos obrigatórios com até 64 caracteres. `size` de 1 a 100 (acima disso, 400).
 - `201` com `Location` ao criar. Datas em UTC, ISO-8601. DTOs separados da entidade.
 - Erros em Problem Details (RFC 9457) com `traceId`: 400 (campos ou JSON inválido), 401/403, 404, 405, 409, 415
-  e 500, todos no mesmo formato e sem stack trace nem detalhe interno. Erro do provedor não chega ao POST (a chamada é assíncrona): aparece no `status` e no `failureReason`.
+  e 500, todos no mesmo formato e sem stack trace nem detalhe interno.
+- Erro do provedor não chega ao POST, porque a chamada é assíncrona: aparece no `status` e no `failureReason` da
+  solicitação (por exemplo, `PROVIDER_REJECTED_400`).
 
 ## Decisões técnicas
 
@@ -130,10 +138,14 @@ contrato do desafio (JSON, status, rotas, headers, escopos). Decisões maiores e
 
 ## Estratégia de testes
 
+Teste unitário onde há decisão de regra (entidade e processamento), porque é rápido e cobre cada caminho sem
+subir o Spring. Teste de integração onde o risco está na combinação das peças (índice único sob concorrência,
+job + HTTP + banco, segurança), porque um mock não pegaria esses erros.
+
 - **Unitário (sem Spring):** transições da entidade e decisões do processamento (sucesso, recusa, nova
   tentativa, Retry-After, última tentativa, reserva disputada, reserva expirada, erro num item do lote).
 - **Client HTTP contra WireMock:** headers enviados e como cada resposta, timeout ou erro de rede é tratado.
-- **Fatia web:** contrato HTTP, validação, 401/403 e formato do erro.
+- **Fatia web:** contrato HTTP, validação, 401/403, 404/405/415 e formato do erro.
 - **Integração com H2:** duplicidade com 16 threads simultâneas, fluxo completo API → job → WireMock (sucesso,
   400, 500 até esgotar, timeout e depois sucesso) e isolamento entre sistemas.
 - **Integração com PostgreSQL (Testcontainers):** duplicidade concorrente e filtros no banco real.
