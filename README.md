@@ -1,51 +1,51 @@
 # Activation Service
 
-Serviço que registra solicitações de ativação de produtos, permite consultar o status e faz a ativação
-chamando um provedor externo.
+Service that records customer product activation requests, lets clients check their status and performs
+the activation by calling an external provider.
 
 Stack: Java 21, Spring Boot 3.5 (MVC, Data JPA, Security Resource Server, Actuator), PostgreSQL,
-Liquibase, Maven e Docker. Testes com JUnit 5, Mockito, AssertJ, MockMvcTester, WireMock, Awaitility,
-Testcontainers e ArchUnit.
+Liquibase, Maven and Docker. Tests with JUnit 5, Mockito, AssertJ, MockMvcTester, WireMock, Awaitility,
+Testcontainers and ArchUnit.
 
-Seções: [Como executar](#como-executar) · [API](#api) · [Decisões técnicas](#decisões-técnicas) ·
-[Testes](#estratégia-de-testes) · [Observabilidade](#observabilidade) ·
-[Cenário de análise](#cenário-de-análise) · [Produção](#produção) · [Pontos pendentes](#pontos-pendentes) ·
-[Melhorias futuras](#melhorias-futuras) · [Uso de IA](#uso-de-ia)
+Sections: [How to run](#how-to-run) · [API](#api) · [Technical decisions](#technical-decisions) ·
+[Tests](#testing-strategy) · [Observability](#observability) · [Analysis scenario](#analysis-scenario) ·
+[Production](#production) · [Pending items](#pending-items) · [Future improvements](#future-improvements) ·
+[AI usage](#ai-usage)
 
-As decisões principais também estão registradas em [`docs/adr`](docs/adr).
+The main decisions are also recorded in [`docs/adr`](docs/adr).
 
-## Como executar
+## How to run
 
-Precisa do JDK 21. O Maven vem pelo wrapper e o Docker é opcional.
+Requires JDK 21. Maven comes with the wrapper and Docker is optional.
 
-Build e todos os testes:
+Build and all tests:
 
 ```bash
 ./mvnw verify
 ```
 
-Roda os testes unitários (`*Test`, surefire) e os de integração (`*IT`, failsafe). Os testes contra
-PostgreSQL real usam Testcontainers e são pulados quando não há Docker; os outros testes de integração
-usam H2 em modo PostgreSQL com o mesmo changelog Liquibase. No Windows, `mvnw.cmd verify`.
+Runs the unit tests (`*Test`, surefire) and the integration tests (`*IT`, failsafe). The tests against a
+real PostgreSQL use Testcontainers and are skipped when Docker is not available; the other integration
+tests use H2 in PostgreSQL mode with the same Liquibase changelog. On Windows, `mvnw.cmd verify`.
 
-Rodar sem Docker (perfil `local`):
+Run without Docker (`local` profile):
 
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-O perfil `local` usa H2 em memória, um provedor simulado dentro da própria aplicação e um endpoint que
-emite tokens de teste, já que o desafio não tem servidor de autenticação. Tudo isso fica atrás de
-`local-dev.habilitado=true`, que não é ligado em produção. O segredo dos tokens locais vem de
-`LOCAL_JWT_SECRET`; sem ele, a aplicação gera um aleatório a cada subida.
+The `local` profile uses in-memory H2, a fake provider inside the application itself and an endpoint
+that issues test tokens, since the challenge has no authorization server. All of this sits behind
+`local-dev.enabled=true`, which is never turned on in production. The local token secret comes from
+`LOCAL_JWT_SECRET`; without it, the application generates a random one on every start.
 
-Ambiente completo (aplicação, PostgreSQL 16 e WireMock como provedor):
+Full environment (application, PostgreSQL 16 and WireMock as the provider):
 
 ```bash
 docker compose up --build
 ```
 
-Testando com curl:
+Trying it with curl:
 
 ```bash
 TOKEN=$(curl -s -X POST "http://localhost:8080/dev/token?clientId=system-a" | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
@@ -59,41 +59,41 @@ curl -s http://localhost:8080/api/v1/requests/<id> -H "Authorization: Bearer $TO
 curl -s "http://localhost:8080/api/v1/requests?status=COMPLETED&page=0&size=20" -H "Authorization: Bearer $TOKEN"
 ```
 
-O provedor simulado (e os mappings do WireMock em [`docker/wiremock/mappings`](docker/wiremock/mappings))
-responde conforme o `productCode`:
+The fake provider (and the WireMock mappings in [`docker/wiremock/mappings`](docker/wiremock/mappings))
+answers according to the `productCode`:
 
-| productCode contém | Provedor responde | Status final |
+| productCode contains | Provider answers | Final status |
 |---|---|---|
-| qualquer outro valor | 200 | `COMPLETED` |
-| `REJECT` | 400 | `FAILED` na 1ª tentativa |
-| `ERROR` | 500 sempre | `FAILED` após 5 tentativas |
-| `SLOW` | demora 5 s (timeout de leitura é 3 s) | local: timeout e depois `COMPLETED`; compose: `FAILED` após as tentativas |
-| `BUSY` | 503 com `Retry-After: 3` | local: `COMPLETED` na 2ª tentativa; compose: `FAILED` após as tentativas |
+| anything else | 200 | `COMPLETED` |
+| `REJECT` | 400 | `FAILED` on the 1st attempt |
+| `ERROR` | always 500 | `FAILED` after 5 attempts |
+| `SLOW` | takes 5 s (read timeout is 3 s) | local: timeout, then `COMPLETED`; compose: `FAILED` after the attempts |
+| `BUSY` | 503 with `Retry-After: 3` | local: `COMPLETED` on the 2nd attempt; compose: `FAILED` after the attempts |
 
-Endpoints públicos de operação: `/actuator/health/liveness`, `/actuator/health/readiness` e
+Public operational endpoints: `/actuator/health/liveness`, `/actuator/health/readiness` and
 `/actuator/prometheus`.
 
 ## API
 
-| Método | Caminho | Escopo | Descrição |
+| Method | Path | Scope | Description |
 |---|---|---|---|
-| POST | `/api/v1/requests` | `activation:write` | Cria a solicitação (idempotente por `externalId`) |
-| GET | `/api/v1/requests/{id}` | `activation:read` | Consulta uma solicitação |
-| GET | `/api/v1/requests?status=&customerId=&page=&size=` | `activation:read` | Lista paginada, mais recentes primeiro |
+| POST | `/api/v1/requests` | `activation:write` | Creates the request (idempotent by `externalId`) |
+| GET | `/api/v1/requests/{id}` | `activation:read` | Gets one request |
+| GET | `/api/v1/requests?status=&customerId=&page=&size=` | `activation:read` | Paginated list, newest first |
 
-Respostas do POST:
+POST responses:
 
-| Situação | Status |
+| Situation | Status |
 |---|---|
-| Criada | `201 Created` com `Location: /api/v1/requests/{id}` |
-| Retry com mesmo `externalId` e mesmo conteúdo | `200 OK` com o registro existente |
-| Mesmo `externalId` com conteúdo diferente | `409 Conflict` com `existingRequestId` |
-| Dados inválidos | `400` com a lista `errors` por campo |
-| Corpo acima de 16 KB | `413` |
-| Sem token ou token inválido / sem o escopo | `401` / `403` |
+| Created | `201 Created` with `Location: /api/v1/requests/{id}` |
+| Retry with the same `externalId` and same content | `200 OK` with the existing record |
+| Same `externalId` with different content | `409 Conflict` with `existingRequestId` |
+| Invalid data | `400` with the `errors` list per field |
+| Body larger than 16 KB | `413` |
+| No token or invalid token / missing scope | `401` / `403` |
 
-Validação de `externalId`, `customerId` e `productCode`: obrigatórios, até 64 caracteres, só letras,
-números, `.`, `_` e `-`. Paginação: `page >= 0` e `size` entre 1 e 100 (padrão 20).
+Validation of `externalId`, `customerId` and `productCode`: required, up to 64 characters, only letters,
+digits, `.`, `_` and `-`. Pagination: `page >= 0` and `size` between 1 and 100 (default 20).
 
 ```json
 {
@@ -109,277 +109,284 @@ números, `.`, `_` e `-`. Paginação: `page >= 0` e `size` entre 1 e 100 (padr�
 }
 ```
 
-Datas em UTC, ISO-8601. `failureReason` é um código estável, nunca a mensagem do provedor.
+Dates in UTC, ISO-8601. `failureReason` is a stable code, never the provider message.
 
-Erros seguem Problem Details (RFC 9457, `application/problem+json`) e trazem `traceId`, o mesmo
-identificador de correlação que aparece nos logs e no header `X-Correlation-Id`. Nenhuma resposta tem
-stack trace ou mensagem interna; erro inesperado vira `500` genérico e o detalhe fica no log.
+Errors follow Problem Details (RFC 9457, `application/problem+json`) and include `traceId`, the same
+correlation id that shows up in the logs and in the `X-Correlation-Id` header. No response carries a
+stack trace or an internal message; unexpected errors become a generic `500` and the detail stays in the
+log.
 
-## Decisões técnicas
+## Technical decisions
 
-### Organização
+### Layout
 
 ```
-api            interface do controller com o contrato HTTP; api.impl só delega para o service
-service        regra de negócio (criação/consulta e processamento das solicitações)
-repository     Spring Data; repository.domain tem a entidade e o converter do status
-intercomm      client @HttpExchange do provedor e o service que classifica cada resposta
-job            rotina agendada que dispara o processamento
-config         segurança, cliente HTTP, filtros, tratamento de erro, métricas, properties
-dto / vo       contrato da API e objetos internos (resultado da chamada, política de retentativa)
-enumerator     status da solicitação e catálogo de erros (código, mensagem, HTTP status)
-localdev       emissor de token e provedor simulado, só com local-dev.habilitado=true
+api            controller interface with the HTTP contract; api.impl only delegates to the service
+service        business rules (create/get/list and request processing)
+repository     Spring Data; repository.domain holds the entity
+intercomm      @HttpExchange client for the provider and the service that classifies each response
+job            scheduled routine that triggers processing
+config         security, HTTP client, filters, error handling, metrics, properties
+dto / vo       API contract and internal objects (call result, retry policy)
+enumerator     request status and error catalog (code, message key, HTTP status)
+localdev       token issuer and fake provider, only with local-dev.enabled=true
 ```
 
-As dependências vão sempre no mesmo sentido (controller e job chamam service; service chama
-repository e intercomm), e isso é conferido por testes ArchUnit. Textos de erro e de validação ficam em
-`messages.properties`; rotas, headers e escopos ficam em classes de constantes.
+Dependencies always point the same way (controller and job call services; services call repository and
+intercomm), and ArchUnit tests check it. Error and validation texts live in `messages.properties`;
+routes, headers and scopes live in constant classes.
 
-### Estados e transições
+### Time zone
+
+The application clock uses the JVM default zone, which comes from the environment: the Dockerfile and
+docker-compose set `TZ=America/Sao_Paulo`, so changing the zone is a deployment setting, not a code
+change. That only affects local times (logs, for example). Everything stored or returned is an instant:
+the database columns are `TIMESTAMP WITH TIME ZONE`, Hibernate writes in UTC and the API always returns
+UTC (ISO-8601), as the challenge asks. Tests run with the JVM in UTC.
+
+### States and transitions
 
 ```
 PENDING -> PROCESSING -> COMPLETED
    ^           |
-   +-----------+  falha temporária, com backoff
+   +-----------+  transient failure, with backoff
                +-> FAILED
 ```
 
-O status só muda pelos métodos da entidade (`iniciarProcessamento`, `concluir`, `falhar`,
-`agendarNovaTentativa`, `liberarReservaExpirada`); não há setter. Uma transição inválida, como
-`COMPLETED` voltando para `PROCESSING`, é rejeitada, e isso é testado sem Spring.
+Status only changes through entity methods (`startProcessing`, `complete`, `fail`, `scheduleRetry`,
+`releaseExpiredLease`); there is no setter. An invalid transition, such as `COMPLETED` going back to
+`PROCESSING`, is rejected, and that is tested without Spring.
 
-Falha temporária volta para `PENDING`, com `attempts` incrementado e a próxima tentativa no futuro. Com
-isso, `PROCESSING` significa só "um worker está com ela agora", e a reconciliação fica simples:
-`PROCESSING` com a reserva vencida é sempre um worker que morreu.
+A transient failure goes back to `PENDING`, with `attempts` incremented and the next attempt in the
+future. This way `PROCESSING` only means "a worker has it right now", which keeps reconciliation simple:
+`PROCESSING` with an expired lease is always a worker that died.
 
-A entidade tem `@Version` (lock otimista): se duas instâncias tentam reservar a mesma solicitação, só
-uma grava e a outra pula.
+The entity has `@Version` (optimistic lock): if two instances try to claim the same request, only one
+saves and the other skips it.
 
-### Duplicidade
+### Duplicates
 
-Quem garante a unicidade é o índice único `(cd_sistemaorigem, cd_externo)` no banco. O service faz:
+The unique index on `(cd_sourcesystem, cd_external)` is what guarantees uniqueness. The service:
 
-1. busca por (sistema de origem, externalId); se existe, resolve na hora (é o retry comum);
-2. tenta o INSERT (`saveAndFlush`, em transação própria);
-3. se o índice recusar, outra requisição ganhou a corrida: relê o registro vencedor e resolve.
+1. looks up (source system, externalId); if it exists, resolves right away (the common retry);
+2. tries the INSERT (`saveAndFlush`, in its own transaction);
+3. if the index rejects it, another request won the race: it reads the winning record and resolves.
 
-Consultar e depois inserir não basta porque, entre o SELECT e o INSERT de uma requisição, outra
-requisição igual pode fazer o próprio SELECT. As duas não acham nada e as duas inserem; não há linha
-para travar, então o isolamento READ COMMITTED não ajuda. Só a restrição no banco é atômica entre
-transações e instâncias. Por isso o método de criação não abre transação: a releitura depois da falha
-precisa de uma transação nova (no PostgreSQL, uma transação que deu erro fica abortada).
+Checking and then inserting is not enough because, between one request's SELECT and INSERT, an identical
+request can run its own SELECT. Neither finds anything and both insert; there is no row to lock, so READ
+COMMITTED does not help. Only the database constraint is atomic across transactions and instances. That
+is why the create method does not open a transaction: the re-read after the failure needs a new one
+(in PostgreSQL, a transaction that hit an error stays aborted).
 
-| Cenário | Resposta | Motivo |
+| Scenario | Response | Reason |
 |---|---|---|
-| Mesmo `externalId`, mesmo conteúdo | `200` com o registro existente | Retry é esperado e o cliente precisa do `id` e do status. `200` em vez de `201` mostra que nada foi criado. |
-| Mesmo `externalId`, `customerId`/`productCode` diferente | `409` com `existingRequestId` | O cliente reaproveitou o identificador para outra coisa; não sobrescrevemos nem criamos outra. |
-| Duas requisições iguais em paralelo | uma recebe `201`, a outra `200` com o mesmo registro | A que perde bate no índice, relê e cai no caso de retry. |
+| Same `externalId`, same content | `200` with the existing record | Retries are expected and the client needs the `id` and status. `200` instead of `201` shows nothing was created. |
+| Same `externalId`, different `customerId`/`productCode` | `409` with `existingRequestId` | The client reused the identifier for something else; we neither overwrite nor create another. |
+| Two identical requests in parallel | one gets `201`, the other `200` with the same record | The loser hits the index, re-reads and falls into the retry case. |
 
-O `externalId` é único por sistema de origem, não globalmente: dois sistemas podem gerar o mesmo valor,
-e com unicidade global o sistema B receberia o registro de A ou um 409 que revela que ele existe.
+`externalId` is unique per source system, not globally: two systems can generate the same value, and with
+global uniqueness system B would get system A's record or a 409 that reveals it exists.
 
-Testado com 16 threads contra H2 e 20 contra PostgreSQL (Testcontainers): sempre um registro só e
-exatamente uma criação.
+Tested with 16 threads against H2 and 20 against PostgreSQL (Testcontainers): always a single record and
+exactly one creation.
 
-### Integração com o provedor
+### Provider integration
 
-O POST só grava a solicitação como `PENDING` e responde. Um job agendado (a cada 1 s) busca as que
-estão prontas e chama o provedor. Se o provedor ficar lento, a API continua rápida; o atraso aparece só
-no tempo até `COMPLETED`, que o consumidor acompanha pelo GET.
+The POST only saves the request as `PENDING` and returns. A scheduled job (every 1 s) picks the ones
+that are ready and calls the provider. If the provider gets slow, the API stays fast; the delay only shows
+in the time until `COMPLETED`, which the client follows through the GET.
 
-A chamada HTTP nunca acontece com transação aberta. São três passos:
+The HTTP call never happens inside an open transaction. There are three steps:
 
-1. reserva, numa transação curta: `PENDING -> PROCESSING`, `attempts + 1` e reserva de 30 s;
-2. chamada ao provedor, sem transação e sem conexão de banco presa;
-3. gravação do resultado, numa transação curta, só se a versão do registro ainda for a da reserva.
+1. claim, in a short transaction: `PENDING -> PROCESSING`, `attempts + 1` and a 30 s lease;
+2. call the provider, with no transaction and no database connection held;
+3. save the result, in a short transaction, only if the record version is still the claimed one.
 
-A própria tabela funciona como outbox: depois do commit do POST, qualquer instância encontra o registro
-`PENDING`. Se a instância cair durante a chamada, a solicitação fica em `PROCESSING` com a reserva
-vencida e é reprocessada.
+The table itself works as the outbox: after the POST commits, any instance finds the `PENDING` record. If
+an instance dies during the call, the request stays `PROCESSING` with an expired lease and is processed
+again.
 
-| Retorno do provedor | Novo status | Nova tentativa? | Por quê |
+| Provider response | New status | Retry? | Why |
 |---|---|---|---|
-| 2xx | `COMPLETED` | Não | Produto ativado. |
-| 400 e demais 4xx | `FAILED` (`PROVIDER_REJECTED_4xx`) | Não | O provedor recusou o conteúdo; repetir dá o mesmo resultado. |
-| 500, 502, 504, 408 | `PENDING` com backoff; `FAILED` ao esgotar | Sim | Falha do provedor, normalmente passageira. |
-| Timeout ou erro de rede | `PENDING` com backoff; `FAILED` ao esgotar | Sim, com a mesma `Idempotency-Key` | O resultado é desconhecido: o provedor pode ter ativado. |
-| 429 ou 503 com `Retry-After` | `PENDING` para depois do `Retry-After` (teto de 5 min) | Sim | O provedor disse quando voltar. Aceita segundos ou data HTTP. |
-| 401 ou 403 | `PENDING` com backoff e log de erro | Sim | O problema é a nossa credencial, não a solicitação. |
+| 2xx | `COMPLETED` | No | Product activated. |
+| 400 and other 4xx | `FAILED` (`PROVIDER_REJECTED_4xx`) | No | The provider rejected the content; retrying gives the same result. |
+| 500, 502, 504, 408 | `PENDING` with backoff; `FAILED` when attempts run out | Yes | Provider-side failure, usually temporary. |
+| Timeout or network error | `PENDING` with backoff; `FAILED` when attempts run out | Yes, with the same `Idempotency-Key` | The outcome is unknown: the provider may have activated. |
+| 429 or 503 with `Retry-After` | `PENDING` until after `Retry-After` (5 min cap) | Yes | The provider said when to come back. Accepts seconds or an HTTP date. |
+| 401 or 403 | `PENDING` with backoff and an error log | Yes | The problem is our credential, not the request. |
 
-- Timeouts: conexão 2 s e leitura 3 s, configuráveis por `PROVIDER_CONNECT_TIMEOUT` e
-  `PROVIDER_READ_TIMEOUT`. A reserva de 30 s é maior que a soma, para um worker vivo não perder a
-  reserva no meio da chamada.
-- Timeout ambíguo: toda chamada manda `Idempotency-Key` com o id da solicitação. Parto do princípio de
-  que o provedor deduplica por essa chave (o simulado faz isso). Sem esse suporte, consultaria o status
-  no provedor antes de reenviar.
-- Limite: 5 chamadas, com backoff exponencial e jitter (2 s, 4 s, 8 s, 16 s, cada uma sorteada entre
-  a metade e o valor cheio, com teto de 5 min). Ao esgotar, `FAILED` com
-  `MAX_ATTEMPTS_EXCEEDED:<último motivo>`.
-- O lote de cada ciclo (até 20) roda em virtual threads, com no máximo 5 chamadas simultâneas, para não
-  disputar mais conexões do que o pool tem.
-- Circuit breaker não foi implementado; ver [Pontos pendentes](#pontos-pendentes).
+- Timeouts: connect 2 s and read 3 s, configurable through `PROVIDER_CONNECT_TIMEOUT` and
+  `PROVIDER_READ_TIMEOUT`. The 30 s lease is longer than both together, so a live worker never loses its
+  claim in the middle of a call.
+- Ambiguous timeout: every call sends `Idempotency-Key` with the request id. The assumption is that the
+  provider deduplicates by that key (the fake one does). Without that support, I would check the status at
+  the provider before resending.
+- Limit: 5 calls, with exponential backoff and jitter (2 s, 4 s, 8 s, 16 s, each drawn between half and
+  the full value, capped at 5 min). When they run out, `FAILED` with `MAX_ATTEMPTS_EXCEEDED:<last reason>`.
+- Each cycle's batch (up to 20) runs on virtual threads, with at most 5 concurrent calls, so it does not
+  compete for more connections than the pool has.
+- No circuit breaker was implemented; see [Pending items](#pending-items).
 
-### Segurança
+### Security
 
-- Fluxo OAuth 2.0 Client Credentials: os consumidores são sistemas, sem usuário nem redirect. Cada
-  sistema tem seu client e segredo (ou `private_key_jwt`) no servidor de autorização.
-- O serviço é Resource Server e valida no JWT a assinatura (chaves do JWKS do emissor, descoberto por
-  `JWT_ISSUER_URI`), o emissor, a audiência (`activation-service`) e a expiração.
-- Escopos: `activation:write` cria; `activation:read` consulta e lista.
-- Isolamento entre consumidores (BOLA): a solicitação guarda o `client_id` de quem criou, e consulta,
-  listagem e unicidade sempre filtram por ele. Solicitação de outro sistema responde `404`, não `403`,
-  para não revelar que existe.
-- Credencial do provedor: vem de `PROVIDER_API_KEY`, que em produção é injetada a partir do secret
-  manager do cloud, nunca do repositório ou da imagem. Para rotacionar, o provedor aceita duas chaves
-  durante a troca, a nova vai para o secret manager e as instâncias reiniciam em rolling. A chave
-  nunca aparece em log.
-- Corpo limitado a 16 KB (`413`). Rate limit ficaria no API Gateway; ver pendências.
-- No ambiente local, sem IdP, o modo `local-dev` usa HS256 com as mesmas validações de emissor,
-  audiência e expiração. Os testes cobrem token expirado, adulterado, com emissor e audiência errados,
-  sem escopo e o isolamento entre sistemas.
+- OAuth 2.0 Client Credentials flow: the clients are systems, with no user and no redirect. Each system
+  has its client and secret (or `private_key_jwt`) at the authorization server.
+- The service is a Resource Server and validates the JWT signature (keys from the issuer's JWKS,
+  discovered through `JWT_ISSUER_URI`), issuer, audience (`activation-service`) and expiration.
+- Scopes: `activation:write` creates; `activation:read` gets and lists.
+- Isolation between clients (BOLA): each request stores the `client_id` that created it, and get, list
+  and uniqueness always filter by it. A request from another system returns `404`, not `403`, so its
+  existence is not revealed.
+- Provider credential: comes from `PROVIDER_API_KEY`, injected in production from the cloud secret
+  manager, never from the repository or the image. To rotate it, the provider accepts two keys during the
+  switch, the new one goes to the secret manager and instances restart in a rolling fashion. The key never
+  shows up in logs.
+- Body limited to 16 KB (`413`). Rate limiting would live in the API Gateway; see pending items.
+- Locally, without an IdP, `local-dev` mode uses HS256 with the same issuer, audience and expiration
+  checks. Tests cover expired, tampered, wrong-issuer and wrong-audience tokens, missing scope and
+  isolation between systems.
 
-### Índices
+### Indexes
 
-| Índice | Uso |
+| Index | Use |
 |---|---|
-| único `(cd_sistemaorigem, cd_externo)` | Idempotência e busca do retry. |
-| `(fl_situacao, dt_proximatentativa)` | Busca do job e contagem por status. |
-| `(cd_sistemaorigem, fl_situacao, dt_cadastro)` | Listagem filtrada por status, ordenada por data. |
-| `(cd_sistemaorigem, cd_cliente, dt_cadastro)` | Listagem filtrada por cliente. |
+| unique `(cd_sourcesystem, cd_external)` | Idempotency and the retry lookup. |
+| `(fl_status, dt_nextattempt)` | The job query and counts by status. |
+| `(cd_sourcesystem, fl_status, dt_created)` | List filtered by status, sorted by date. |
+| `(cd_sourcesystem, cd_customer, dt_created)` | List filtered by customer. |
 
-Toda listagem começa pelo sistema de origem, por isso ele é a primeira coluna. Com muito volume, o
-total da paginação fica caro e eu passaria para paginação por cursor. No PostgreSQL o índice do job
-poderia ser parcial (só `PENDING` e `PROCESSING`); não fiz para manter o mesmo changelog no H2.
+Every list starts with the source system, so it is the first column. With a lot of data, the page total
+gets expensive and I would move to cursor pagination. In PostgreSQL the job index could be partial (only
+`PENDING` and `PROCESSING`); I kept it plain so the same changelog runs on H2.
 
-## Estratégia de testes
+## Testing strategy
 
-| Tipo | Classe | O que garante |
+| Type | Class | What it guarantees |
 |---|---|---|
-| Unitário | `SolicitacaoAtivacaoTest` | Transições, reserva, limite do motivo de falha. |
-| Unitário | `PoliticaRetentativaVOTest` | Backoff exponencial, jitter, teto, Retry-After. |
-| Unitário (Mockito) | `ProcessamentoSolicitacaoAtivacaoServiceImplTest` | Decisão por resultado, limite de tentativas, reserva disputada, reserva vencida. |
-| Cliente HTTP contra WireMock | `ProvedorAtivacaoIntercommServiceImplTest` | Cada status HTTP, Retry-After, timeout, provedor fora do ar, headers enviados. |
-| Fatia web (`@WebMvcTest`) | `SolicitacaoAtivacaoControllerTest` | Contrato HTTP: 201, 200, 409, 400, 404, 413, 500, 401 e 403. |
-| Integração (H2 + Liquibase) | `SolicitacaoAtivacaoDuplicadaIT` | Idempotência no banco, inclusive com 16 threads. |
-| Integração ponta a ponta | `ProcessamentoSolicitacaoAtivacaoIT` | API, banco, job e WireMock: sucesso, 400, 500 até esgotar, timeout e retry com a mesma chave. |
-| Integração de segurança | `SegurancaIsolamentoIT` | Validação real do JWT, BOLA, filtros da listagem, health e métricas. |
-| Integração PostgreSQL | `SolicitacaoAtivacaoPostgresIT` | Corrida de duplicidade e listagem no banco real (Testcontainers). |
-| Arquitetura | `ArquiteturaTest` | Sentido das dependências entre pacotes. |
+| Unit | `ActivationRequestTest` | Transitions, lease, failure reason length. |
+| Unit | `RetryPolicyVOTest` | Exponential backoff, jitter, cap, Retry-After. |
+| Unit (Mockito) | `ActivationProcessingServiceImplTest` | Decision per result, attempt limit, contested claim, expired lease. |
+| HTTP client against WireMock | `ActivationProviderIntercommServiceImplTest` | Each HTTP status, Retry-After, timeout, unreachable provider, headers sent. |
+| Web slice (`@WebMvcTest`) | `ActivationRequestControllerTest` | HTTP contract: 201, 200, 409, 400, 404, 413, 500, 401 and 403. |
+| Integration (H2 + Liquibase) | `DuplicateActivationRequestIT` | Idempotency in the database, including 16 threads. |
+| End-to-end integration | `ActivationProcessingIT` | API, database, job and WireMock: success, 400, 500 until attempts run out, timeout and retry with the same key. |
+| Security integration | `SecurityIsolationIT` | Real JWT validation, BOLA, list filters, health and metrics. |
+| PostgreSQL integration | `ActivationRequestPostgresIT` | Duplicate race and list on a real database (Testcontainers). |
+| Architecture | `ArchitectureTest` | Direction of dependencies between packages. |
 
-O unitário cobre a regra, que é o que mais muda; a fatia web cobre o contrato HTTP; a integração cobre
-o que só aparece com banco e rede de verdade (corrida no índice, timeout, transações). Os testes rodam
-com o fuso em UTC, como no contêiner. Nenhum teste depende de servidor de autenticação real.
+Unit tests cover the rules, which change the most; the web slice covers the HTTP contract; integration
+tests cover what only shows up with a real database and network (the index race, timeouts,
+transactions). No test depends on a real authorization server.
 
-## Observabilidade
+## Observability
 
-- Health: `/actuator/health/liveness` e `/actuator/health/readiness`; só a readiness olha o banco.
-- Correlação: o `X-Correlation-Id` recebido (validado) ou gerado vai para o MDC, para todas as linhas de
-  log, para o `traceId` dos erros, fica gravado na solicitação e é reenviado ao provedor pelo job.
-- Métricas em `/actuator/prometheus`: `http_server_requests_seconds` (latência da API),
-  `activation_provider_calls_seconds{outcome}` (latência e erro do provedor),
+- Health: `/actuator/health/liveness` and `/actuator/health/readiness`; only readiness checks the database.
+- Correlation: the incoming `X-Correlation-Id` (validated) or a generated one goes to the MDC, to every log
+  line, to the `traceId` of errors, is stored on the request and is sent again to the provider by the job.
+- Metrics at `/actuator/prometheus`: `http_server_requests_seconds` (API latency),
+  `activation_provider_calls_seconds{outcome}` (provider latency and errors),
   `http_client_requests_seconds`, `activation_requests{status}`,
-  `activation_requests_transitions_total{status}`, além de `hikaricp_*` e `jvm_*`.
-- Logs em JSON (ECS) no perfil `prod`. Token, segredo e chave do provedor não são logados.
-- Tracing distribuído não foi implementado; com `micrometer-tracing-bridge-otel` e exporter OTLP, o
-  `traceId` do OpenTelemetry substituiria o correlation id próprio.
+  `activation_requests_transitions_total{status}`, plus `hikaricp_*` and `jvm_*`.
+- JSON logs (ECS) in the `prod` profile. Tokens, secrets and the provider key are not logged.
+- Distributed tracing was not implemented; with `micrometer-tracing-bridge-otel` and an OTLP exporter, the
+  OpenTelemetry `traceId` would replace the custom correlation id.
 
-## Cenário de análise
+## Analysis scenario
 
-> API 300 ms para 2,5 s, CPU 45%, memória 60%, algumas consultas 50 ms para 1,2 s, provedor 400 ms para 3 s.
+> API 300 ms to 2.5 s, CPU 45%, memory 60%, some queries 50 ms to 1.2 s, provider 400 ms to 3 s.
 
-CPU e memória normais indicam que a aplicação não está trabalhando mais, está esperando alguma coisa:
-I/O, conexão ou lock.
+Normal CPU and memory mean the application is not working harder, it is waiting on something: I/O, a
+connection or a lock.
 
-1. O que investigaria primeiro: quando começou e o que mudou naquele momento (deploy, tráfego, job,
-   mudança no provedor, migração). Depois, quais endpoints pioraram e se a lentidão no banco é de
-   execução da consulta ou de espera por conexão.
+1. What I would look at first: when it started and what changed at that moment (deploy, traffic, a job,
+   a provider change, a migration). Then, which endpoints got slower and whether the database slowness is
+   query execution or waiting for a connection.
 
-2. Como separar aplicação, banco e integração: decompondo o tempo de uma requisição lenta. O tracing
-   mostra quanto vai para HTTP, JDBC e chamada externa. Se o `pg_stat_statements` diz 50 ms e a
-   aplicação mede 1,2 s, o tempo está na espera pelo pool (`hikaricp_connections_pending`,
-   `hikaricp_connections_acquire_seconds`), não no banco. Para o provedor,
-   `http_client_requests_seconds` por status. Um thread dump com threads paradas em
-   `HikariPool.getConnection` ou lendo socket aponta o culpado.
+2. How to tell application, database and integration apart: by breaking down the time of a slow request.
+   Tracing shows how much goes to HTTP, JDBC and the external call. If `pg_stat_statements` says 50 ms and
+   the application measures 1.2 s, the time is spent waiting for the pool
+   (`hikaricp_connections_pending`, `hikaricp_connections_acquire_seconds`), not in the database. For the
+   provider, `http_client_requests_seconds` by status. A thread dump with threads stuck in
+   `HikariPool.getConnection` or reading a socket points to the culprit.
 
-3. Logs e métricas úteis: p50/p95/p99 por endpoint; latência, erro e timeout do provedor; pool do
-   Hikari (ativas, ociosas, pendentes, tempo de aquisição); `pg_stat_activity` e `EXPLAIN ANALYZE` das
-   consultas lentas; tamanho da fila (`activation_requests{status="PENDING"}`) e taxa de retry; pausas
-   de GC; logs com correlation id para seguir um caso.
+3. Useful logs and metrics: p50/p95/p99 per endpoint; provider latency, errors and timeouts; Hikari pool
+   (active, idle, pending, acquire time); `pg_stat_activity` and `EXPLAIN ANALYZE` of the slow queries;
+   queue size (`activation_requests{status="PENDING"}`) and retry rate; GC pauses; logs with the
+   correlation id to follow one case.
 
-4. Melhorias: tirar a chamada ao provedor do caminho síncrono e de dentro de transações (este serviço
-   já faz); timeouts curtos e circuit breaker; backoff com jitter para não gerar tempestade de retry;
-   índices para as consultas lentas e paginação por cursor; pool dimensionado e separado entre API e
-   job.
+4. Improvements: take the provider call out of the synchronous path and out of transactions (this service
+   already does); short timeouts and a circuit breaker; backoff with jitter to avoid retry storms; indexes
+   for the slow queries and cursor pagination; a properly sized pool, separate for API and job.
 
-5. Causa comum (hipótese): o provedor lento esgota um recurso compartilhado. Se a chamada ao provedor
-   acontece dentro de uma transação, cada chamada que passa de 400 ms para 3 s segura a conexão sete
-   vezes mais. O pool esgota, as consultas passam a esperar conexão (parecem levar 1,2 s, embora o banco
-   execute em 50 ms) e todas as rotas ficam lentas, com CPU baixa. Retry agressivo piora. Para
-   confirmar: `hikaricp_connections_pending` acima de zero junto com a latência do provedor,
-   `pg_stat_statements` normal, conexões `idle in transaction` no `pg_stat_activity` e thread dump com
-   threads em `getConnection` e em leitura de socket. Se o banco tivesse degradado por outro motivo,
-   o mesmo diagnóstico mostraria.
+5. Common cause (hypothesis): the slow provider exhausts a shared resource. If the provider call happens
+   inside a transaction, each call that goes from 400 ms to 3 s holds the connection seven times longer.
+   The pool runs out, queries start waiting for a connection (they look like 1.2 s even though the
+   database runs them in 50 ms) and every route gets slow, with low CPU. Aggressive retries make it worse.
+   To confirm: `hikaricp_connections_pending` above zero together with the provider latency, normal
+   `pg_stat_statements`, `idle in transaction` connections in `pg_stat_activity` and a thread dump with
+   threads in `getConnection` and in socket reads. If the database had degraded for another reason, the
+   same diagnosis would show it.
 
-6. Validação depois de publicar: canary ou rolling, comparando com a linha de base e com as instâncias
-   antigas: p95/p99 de volta a cerca de 300 ms, pool sem pendências, consultas em torno de 50 ms, erro
-   e retry normais e fila `PENDING` estável. Antes, um teste de carga com o provedor lento (WireMock com
-   atraso). Depois, alerta de SLO de latência para pegar regressão.
+6. Validating after release: canary or rolling, compared with the baseline and with the old instances:
+   p95/p99 back to about 300 ms, no pending connections, queries around 50 ms, normal error and retry
+   rates and a stable `PENDING` queue. Before that, a load test with a slow provider (WireMock with delay).
+   After that, a latency SLO alert to catch regressions.
 
-## Produção
+## Production
 
-- Imagem do [`Dockerfile`](Dockerfile): build em dois estágios, só JRE no final, usuário não-root,
-  camadas do Spring Boot, heap em 75% do limite do contêiner, healthcheck e a JVM como PID 1 para
-  receber o `SIGTERM` (desligamento gracioso).
-- Orquestrador (Kubernetes ou ECS) com pelo menos 2 réplicas, liveness e readiness no Actuator,
-  limites de CPU e memória e `terminationGracePeriodSeconds` maior que o desligamento gracioso.
-- PostgreSQL gerenciado com backup e réplica. O Liquibase roda na subida, ou num job antes do
-  deploy se houver muitas réplicas.
-- Configuração por variável de ambiente (`DB_URL`, `DB_USERNAME`, `JWT_ISSUER_URI`, `JWT_AUDIENCE`,
-  `PROVIDER_BASE_URL`, timeouts, `SPRING_PROFILES_ACTIVE=prod`); `DB_PASSWORD` e `PROVIDER_API_KEY` vêm
-  do secret manager. Sem as obrigatórias, a aplicação não sobe.
-- API Gateway na frente com TLS, rate limit por cliente e limite de corpo. `/actuator/prometheus` só na
-  rede interna.
+- Image from the [`Dockerfile`](Dockerfile): two-stage build, only a JRE in the final image, non-root user,
+  Spring Boot layers, heap at 75% of the container limit, healthcheck, `TZ` set and the JVM as PID 1 to
+  receive `SIGTERM` (graceful shutdown).
+- Orchestrator (Kubernetes or ECS) with at least 2 replicas, liveness and readiness on Actuator, CPU and
+  memory limits and `terminationGracePeriodSeconds` longer than the graceful shutdown.
+- Managed PostgreSQL with backups and a replica. Liquibase runs on startup, or as a job before the deploy
+  if there are many replicas.
+- Configuration through environment variables (`DB_URL`, `DB_USERNAME`, `JWT_ISSUER_URI`, `JWT_AUDIENCE`,
+  `PROVIDER_BASE_URL`, timeouts, `TZ`, `SPRING_PROFILES_ACTIVE=prod`); `DB_PASSWORD` and `PROVIDER_API_KEY`
+  come from the secret manager. Without the required ones the application does not start.
+- API Gateway in front with TLS, per-client rate limiting and a body limit. `/actuator/prometheus` only on
+  the internal network.
 
-Microsserviços e cloud:
+Microservices and cloud:
 
-- Várias instâncias: a duplicidade é resolvida no banco, então vale para qualquer número de instâncias.
-  O job pode rodar em todas, porque a reserva usa lock otimista e a reserva vencida recupera o que uma
-  instância morta deixou. Com muito volume, trocaria por `SELECT ... FOR UPDATE SKIP LOCKED`.
-- Configuração e segredos: o que não é sensível em variável de ambiente ou ConfigMap; o sensível no
-  secret manager do cloud, com rotação.
-- Aviso a outros serviços: ao concluir ou falhar, publicar um evento num tópico (Kafka, SNS/SQS,
-  Pub/Sub), gravando o evento numa tabela na mesma transação da mudança de status e publicando a partir
-  dela, a mesma ideia já usada aqui para chamar o provedor.
-- CI/CD: no PR, `./mvnw verify` (unitários, integração, Testcontainers, ArchUnit); depois build da
-  imagem, scan de vulnerabilidades, push com a tag do commit, deploy em staging com smoke test e
-  promoção para produção em canary, com rollback por métrica. O workflow em
-  [`.github/workflows/ci.yml`](.github/workflows/ci.yml) cobre build, testes e imagem.
+- Multiple instances: duplicates are resolved in the database, so it works with any number of instances.
+  The job can run on all of them, because the claim uses an optimistic lock and the expired lease recovers
+  what a dead instance left behind. With high volume, I would switch to `SELECT ... FOR UPDATE SKIP LOCKED`.
+- Configuration and secrets: non-sensitive values in environment variables or a ConfigMap; sensitive
+  ones in the cloud secret manager, with rotation.
+- Notifying other services: when a request completes or fails, publish an event to a topic (Kafka,
+  SNS/SQS, Pub/Sub), saving the event in a table in the same transaction as the status change and
+  publishing from there, the same idea already used here to call the provider.
+- CI/CD: on a PR, `./mvnw verify` (unit, integration, Testcontainers, ArchUnit); then image build,
+  vulnerability scan, push tagged with the commit, deploy to staging with a smoke test and promotion to
+  production as a canary, with metric-based rollback. The workflow in
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml) covers build, tests and image.
 
-## Pontos pendentes
+## Pending items
 
-| Item | Como faria |
+| Item | How I would do it |
 |---|---|
-| Rate limit por consumidor | No API Gateway, pelo client do token. Na aplicação, Bucket4j com estado no Redis para valer entre instâncias, respondendo `429` com `Retry-After`. |
-| Corpo sem `Content-Length` (chunked) | O filtro olha o `Content-Length`; o chunked seria limitado no gateway ou proxy. |
-| Circuit breaker | Resilience4j no service do provedor; com o circuito aberto, reagenda sem gastar tentativa. |
-| Tracing distribuído | Micrometer Tracing com OpenTelemetry (OTLP). |
-| Solicitações que esgotaram as tentativas | Alerta e endpoint administrativo de reprocessamento. |
-| 409 do provedor para chave já usada | Depende do contrato real; se significar "já ativado", trataria como sucesso. |
-| Docker | Dockerfile e compose escritos, mappings do WireMock validados, mas o `docker build` não rodou na minha máquina (sem Docker); o CI faz o build da imagem. |
+| Per-client rate limiting | At the API Gateway, by the token client. In the application, Bucket4j with state in Redis so it holds across instances, returning `429` with `Retry-After`. |
+| Body without `Content-Length` (chunked) | The filter checks `Content-Length`; chunked bodies would be limited at the gateway or proxy. |
+| Circuit breaker | Resilience4j in the provider service; while open, it reschedules without spending an attempt. |
+| Distributed tracing | Micrometer Tracing with OpenTelemetry (OTLP). |
+| Requests that ran out of attempts | Alert and an admin endpoint to reprocess them. |
+| Provider 409 for an already used key | Depends on the real contract; if it means "already activated", I would treat it as success. |
+| Docker | Dockerfile and compose are written and the WireMock mappings were validated, but `docker build` did not run on my machine (no Docker); CI builds the image. |
 
-## Melhorias futuras
+## Future improvements
 
-- Evento de conclusão publicado via outbox para outros serviços.
-- `SELECT ... FOR UPDATE SKIP LOCKED` na reserva e índice parcial no PostgreSQL.
-- Paginação por cursor.
-- Cancelamento e reprocessamento, com as transições novas no domínio.
-- Contrato OpenAPI publicado e teste de contrato com o provedor.
-- Alertas para fila crescendo, reserva vencida, taxa de `FAILED` e latência do provedor.
-- Teste de carga com provedor lento.
-- Retenção e arquivamento de solicitações antigas.
+- Completion event published through an outbox to other services.
+- `SELECT ... FOR UPDATE SKIP LOCKED` on the claim and a partial index on PostgreSQL.
+- Cursor pagination.
+- Cancel and reprocess, with the new transitions in the domain.
+- Published OpenAPI contract and contract tests with the provider.
+- Alerts for a growing queue, expired leases, `FAILED` rate and provider latency.
+- Load test with a slow provider.
+- Retention and archiving of old requests.
 
-## Uso de IA
+## AI usage
 
-Usei o Claude Code (Anthropic) para ler o enunciado, gerar código, testes, configuração de Docker e CI
-e o rascunho deste README, em commits por item do desafio. Revisei as decisões e o código e validei
-com `./mvnw verify` e com o fluxo manual no perfil `local`.
+I used Claude Code (Anthropic) to read the challenge, generate code, tests, Docker and CI configuration and
+a draft of this README, in commits per challenge item. I reviewed the decisions and the code and validated
+them with `./mvnw verify` and the manual flow in the `local` profile.

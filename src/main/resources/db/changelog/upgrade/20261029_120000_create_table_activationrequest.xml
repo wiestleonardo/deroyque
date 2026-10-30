@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+        logicalFilePath="20261029_120000_create_table_activationrequest.xml">
+
+    <changeSet id="20261029_120000" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="tb_activationrequest"/>
+            </not>
+        </preConditions>
+        <createTable tableName="tb_activationrequest" remarks="Product activation requests received from source systems">
+            <column name="id_activationrequest" type="${uuid}" remarks="Request id, sent to the provider as the idempotency key">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cd_sourcesystem" type="${varchar.100}" remarks="Token client that created the request">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cd_external" type="${varchar.64}" remarks="Request id in the source system (externalId)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cd_customer" type="${varchar.64}" remarks="Customer that will get the product (customerId)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cd_product" type="${varchar.64}" remarks="Product to activate (productCode)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="fl_status" type="${varchar.20}" remarks="Status: PENDING, PROCESSING, COMPLETED or FAILED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="qt_attempt" type="${integer}" defaultValueNumeric="0" remarks="Calls already made to the provider">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dt_nextattempt" type="${timestamptz}" remarks="When PENDING, when it can be processed; when PROCESSING, end of the lease">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tx_failurereason" type="${varchar.200}" remarks="Code of the last failure reason"/>
+            <column name="cd_correlation" type="${varchar.64}" remarks="Correlation id of the request that created it"/>
+            <column name="dt_created" type="${timestamptz}" remarks="Creation date, UTC">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dt_updated" type="${timestamptz}" remarks="Last update date, UTC">
+                <constraints nullable="false"/>
+            </column>
+            <column name="nr_version" type="${bigint}" remarks="Optimistic lock version">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="20261029_120100" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <primaryKeyExists tableName="tb_activationrequest" primaryKeyName="activationrequest_pk"/>
+            </not>
+        </preConditions>
+        <addPrimaryKey tableName="tb_activationrequest" columnNames="id_activationrequest" constraintName="activationrequest_pk"/>
+    </changeSet>
+
+    <changeSet id="20261029_120200" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_name = 'activationrequest_fl_status_ck'
+            </sqlCheck>
+        </preConditions>
+        <comment>Restricts the status to the values known by the enum</comment>
+        <sql>
+            ALTER TABLE tb_activationrequest
+              ADD CONSTRAINT activationrequest_fl_status_ck CHECK (fl_status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'))
+        </sql>
+    </changeSet>
+
+    <changeSet id="20261029_120300" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="tb_activationrequest" indexName="activationrequest_cd_sourcesystem_cd_external_idx_unq"/>
+            </not>
+        </preConditions>
+        <comment>Guarantees one externalId per source system, even with concurrent requests</comment>
+        <createIndex tableName="tb_activationrequest" indexName="activationrequest_cd_sourcesystem_cd_external_idx_unq" unique="true">
+            <column name="cd_sourcesystem"/>
+            <column name="cd_external"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20261029_120400" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="tb_activationrequest" indexName="activationrequest_fl_status_dt_nextattempt_idx"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="tb_activationrequest" indexName="activationrequest_fl_status_dt_nextattempt_idx">
+            <column name="fl_status"/>
+            <column name="dt_nextattempt"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20261029_120500" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="tb_activationrequest" indexName="activationrequest_cd_sourcesystem_fl_status_dt_created_idx"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="tb_activationrequest" indexName="activationrequest_cd_sourcesystem_fl_status_dt_created_idx">
+            <column name="cd_sourcesystem"/>
+            <column name="fl_status"/>
+            <column name="dt_created"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20261029_120600" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="tb_activationrequest" indexName="activationrequest_cd_sourcesystem_cd_customer_dt_created_idx"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="tb_activationrequest" indexName="activationrequest_cd_sourcesystem_cd_customer_dt_created_idx">
+            <column name="cd_sourcesystem"/>
+            <column name="cd_customer"/>
+            <column name="dt_created"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

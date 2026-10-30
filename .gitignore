@@ -5,7 +5,7 @@ target/
 .vscode/
 *.log
 .DS_Store
-# Enunciado do desafio (não faz parte da solução)
+# Challenge statement (not part of the solution)
 desafio-pdf/
 
 # Eclipse / STS
