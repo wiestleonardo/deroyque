@@ -181,11 +181,15 @@ API de 300 ms para 2,5 s, CPU 45%, memória 60%, consultas de 50 ms para 1,2 s, 
 
 Todos são diferenciais do desafio; ficaram descritos em vez de implementados.
 
-- **Rate limit e limite de tamanho do corpo:** no API Gateway.
-- **Circuit breaker:** Resilience4j no service do provedor.
-- **Tracing distribuído:** Micrometer Tracing com OpenTelemetry.
-- **Métrica de solicitações por status:** gauge do Micrometer com contagem por status, com cache curto.
-- `docker compose` não foi executado na minha máquina (sem Docker); o CI faz o build da imagem.
+| Ponto | O que usaria | Como faria |
+|---|---|---|
+| Rate limit | API Gateway (AWS API Gateway, Kong) | Limite por `client_id` do token, respondendo `429` com `Retry-After`. Fica no gateway porque o limite precisa valer para todas as instâncias juntas; dentro da aplicação (Bucket4j) exigiria um Redis para compartilhar o contador. |
+| Limite de tamanho do corpo | API Gateway e Tomcat | Limite no gateway (por exemplo, 16 KB, folgado para três campos de 64 caracteres) e, como segunda barreira, `server.tomcat.max-swallow-size` mais um filtro que recusa `Content-Length` acima do limite com `413`. |
+| Circuit breaker | Resilience4j (`resilience4j-spring-boot3`) | `@CircuitBreaker` no `ProvedorAtivacaoIntercommService`, abrindo com 50% de falha em uma janela de 20 chamadas. Com o circuito aberto, o job não chama o provedor e reagenda a solicitação como `PENDING`, sem gastar tentativa. Só timeout, erro de rede e 5xx contam como falha; 400 não, porque é erro da solicitação. |
+| Tracing distribuído | Micrometer Tracing + OpenTelemetry (`micrometer-tracing-bridge-otel` e exporter OTLP) | O Spring já instrumenta o MVC, o `RestClient` e o JDBC. O trace id passaria a ser o id de correlação, e o header `traceparent` iria ao provedor. Envio para um OpenTelemetry Collector, e dele para Jaeger, Tempo ou o serviço do cloud. |
+| Métrica de solicitações por status | Micrometer (`MultiGauge`) | Um `SELECT fl_situacao, COUNT(*) ... GROUP BY fl_situacao`, atualizado a cada 30 s por um `@Scheduled` (não a cada coleta do Prometheus), publicado como `activation_requests{status=...}`. Com isso dá para alertar sobre fila `PENDING` crescendo e sobre `FAILED` subindo. |
+
+O `docker compose` não foi executado na minha máquina (sem Docker); o CI faz o build da imagem.
 
 ## Melhorias futuras
 
