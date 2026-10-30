@@ -15,6 +15,10 @@ ou `PROCESSING` com a reserva vencida), reserva cada uma gravando com `@Version`
 transação e grava o resultado. Se outra instância tiver alterado a solicitação nesse meio-tempo, o `@Version`
 recusa a gravação.
 
+As solicitações do lote são processadas em paralelo, cada uma numa thread virtual, e o lote seguinte só começa
+quando todas terminam. O cliente HTTP é o do JDK, que não prende a thread do sistema durante a espera
+(*pinning*), ao contrário do `HttpURLConnection`.
+
 ## Consequências
 
 - A API continua rápida com o provedor lento; o consumidor acompanha pelo GET.
