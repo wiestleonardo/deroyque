@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+        logicalFilePath="20261029_120000_create_table_solicitacaoativacao.xml">
+
+    <changeSet id="20261029_120000" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="tb_solicitacaoativacao"/>
+            </not>
+        </preConditions>
+        <createTable tableName="tb_solicitacaoativacao" remarks="Solicitações de ativação de produto recebidas dos sistemas de origem">
+            <column name="id_solicitacaoativacao" type="${uuid}" remarks="Identificador da solicitação, enviado ao provedor como chave de idempotência">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cd_sistemaorigem" type="${varchar.100}" remarks="Client do token que criou a solicitação">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cd_externo" type="${varchar.64}" remarks="Identificador da solicitação no sistema de origem (externalId)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cd_cliente" type="${varchar.64}" remarks="Cliente que terá o produto ativado (customerId)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cd_produto" type="${varchar.64}" remarks="Produto a ativar (productCode)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="fl_situacao" type="${varchar.20}" remarks="Situação: PENDING, PROCESSING, COMPLETED ou FAILED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="qt_tentativa" type="${integer}" defaultValueNumeric="0" remarks="Chamadas já feitas ao provedor">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dt_proximatentativa" type="${timestamptz}" remarks="Em PENDING, quando pode ser processada; em PROCESSING, fim da reserva">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tx_motivofalha" type="${varchar.200}" remarks="Código do último motivo de falha"/>
+            <column name="cd_correlacao" type="${varchar.64}" remarks="Identificador de correlação da requisição que criou a solicitação"/>
+            <column name="dt_cadastro" type="${timestamptz}" remarks="Data de criação, em UTC">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dt_manutencao" type="${timestamptz}" remarks="Data da última alteração, em UTC">
+                <constraints nullable="false"/>
+            </column>
+            <column name="nr_versao" type="${bigint}" remarks="Versão para o lock otimista">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="20261029_120100" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <primaryKeyExists tableName="tb_solicitacaoativacao" primaryKeyName="solicitacaoativacao_pk"/>
+            </not>
+        </preConditions>
+        <addPrimaryKey tableName="tb_solicitacaoativacao" columnNames="id_solicitacaoativacao" constraintName="solicitacaoativacao_pk"/>
+    </changeSet>
+
+    <changeSet id="20261029_120200" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_name = 'solicitacaoativacao_fl_situacao_ck'
+            </sqlCheck>
+        </preConditions>
+        <comment>Restringe a situação aos valores conhecidos pelo enum</comment>
+        <sql>
+            ALTER TABLE tb_solicitacaoativacao
+              ADD CONSTRAINT solicitacaoativacao_fl_situacao_ck CHECK (fl_situacao IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'))
+        </sql>
+    </changeSet>
+
+    <changeSet id="20261029_120300" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="tb_solicitacaoativacao" indexName="solicitacaoativacao_cd_sistemaorigem_cd_externo_idx_unq"/>
+            </not>
+        </preConditions>
+        <comment>Garante um externalId por sistema de origem, inclusive com requisições simultâneas</comment>
+        <createIndex tableName="tb_solicitacaoativacao" indexName="solicitacaoativacao_cd_sistemaorigem_cd_externo_idx_unq" unique="true">
+            <column name="cd_sistemaorigem"/>
+            <column name="cd_externo"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20261029_120400" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="tb_solicitacaoativacao" indexName="solicitacaoativacao_fl_situacao_dt_proximatentativa_idx"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="tb_solicitacaoativacao" indexName="solicitacaoativacao_fl_situacao_dt_proximatentativa_idx">
+            <column name="fl_situacao"/>
+            <column name="dt_proximatentativa"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20261029_120500" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="tb_solicitacaoativacao" indexName="solativacao_cd_sistemaorigem_fl_situacao_dt_cadastro_idx"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="tb_solicitacaoativacao" indexName="solativacao_cd_sistemaorigem_fl_situacao_dt_cadastro_idx">
+            <column name="cd_sistemaorigem"/>
+            <column name="fl_situacao"/>
+            <column name="dt_cadastro"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="20261029_120600" author="leonardowiest">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists tableName="tb_solicitacaoativacao" indexName="solativacao_cd_sistemaorigem_cd_cliente_dt_cadastro_idx"/>
+            </not>
+        </preConditions>
+        <createIndex tableName="tb_solicitacaoativacao" indexName="solativacao_cd_sistemaorigem_cd_cliente_dt_cadastro_idx">
+            <column name="cd_sistemaorigem"/>
+            <column name="cd_cliente"/>
+            <column name="dt_cadastro"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

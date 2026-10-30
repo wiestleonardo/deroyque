@@ -4,7 +4,7 @@ Serviço que registra solicitações de ativação de produtos, permite consulta
 chamando um provedor externo.
 
 Stack: Java 21, Spring Boot 3.5 (MVC, Data JPA, Security Resource Server, Actuator), PostgreSQL,
-Flyway, Maven e Docker. Testes com JUnit 5, Mockito, AssertJ, MockMvcTester, WireMock, Awaitility,
+Liquibase, Maven e Docker. Testes com JUnit 5, Mockito, AssertJ, MockMvcTester, WireMock, Awaitility,
 Testcontainers e ArchUnit.
 
 Seções: [Como executar](#como-executar) · [API](#api) · [Decisões técnicas](#decisões-técnicas) ·
@@ -26,7 +26,7 @@ Build e todos os testes:
 
 Roda os testes unitários (`*Test`, surefire) e os de integração (`*IT`, failsafe). Os testes contra
 PostgreSQL real usam Testcontainers e são pulados quando não há Docker; os outros testes de integração
-usam H2 em modo PostgreSQL com as mesmas migrações Flyway. No Windows, `mvnw.cmd verify`.
+usam H2 em modo PostgreSQL com o mesmo changelog Liquibase. No Windows, `mvnw.cmd verify`.
 
 Rodar sem Docker (perfil `local`):
 
@@ -249,7 +249,7 @@ vencida e é reprocessada.
 
 Toda listagem começa pelo sistema de origem, por isso ele é a primeira coluna. Com muito volume, o
 total da paginação fica caro e eu passaria para paginação por cursor. No PostgreSQL o índice do job
-poderia ser parcial (só `PENDING` e `PROCESSING`); não fiz para manter a mesma migração no H2.
+poderia ser parcial (só `PENDING` e `PROCESSING`); não fiz para manter o mesmo changelog no H2.
 
 ## Estratégia de testes
 
@@ -260,7 +260,7 @@ poderia ser parcial (só `PENDING` e `PROCESSING`); não fiz para manter a mesma
 | Unitário (Mockito) | `ProcessamentoSolicitacaoAtivacaoServiceImplTest` | Decisão por resultado, limite de tentativas, reserva disputada, reserva vencida. |
 | Cliente HTTP contra WireMock | `ProvedorAtivacaoIntercommServiceImplTest` | Cada status HTTP, Retry-After, timeout, provedor fora do ar, headers enviados. |
 | Fatia web (`@WebMvcTest`) | `SolicitacaoAtivacaoControllerTest` | Contrato HTTP: 201, 200, 409, 400, 404, 413, 500, 401 e 403. |
-| Integração (H2 + Flyway) | `SolicitacaoAtivacaoDuplicadaIT` | Idempotência no banco, inclusive com 16 threads. |
+| Integração (H2 + Liquibase) | `SolicitacaoAtivacaoDuplicadaIT` | Idempotência no banco, inclusive com 16 threads. |
 | Integração ponta a ponta | `ProcessamentoSolicitacaoAtivacaoIT` | API, banco, job e WireMock: sucesso, 400, 500 até esgotar, timeout e retry com a mesma chave. |
 | Integração de segurança | `SegurancaIsolamentoIT` | Validação real do JWT, BOLA, filtros da listagem, health e métricas. |
 | Integração PostgreSQL | `SolicitacaoAtivacaoPostgresIT` | Corrida de duplicidade e listagem no banco real (Testcontainers). |
@@ -332,7 +332,7 @@ I/O, conexão ou lock.
   receber o `SIGTERM` (desligamento gracioso).
 - Orquestrador (Kubernetes ou ECS) com pelo menos 2 réplicas, liveness e readiness no Actuator,
   limites de CPU e memória e `terminationGracePeriodSeconds` maior que o desligamento gracioso.
-- PostgreSQL gerenciado com backup e réplica. As migrações Flyway rodam na subida, ou num job antes do
+- PostgreSQL gerenciado com backup e réplica. O Liquibase roda na subida, ou num job antes do
   deploy se houver muitas réplicas.
 - Configuração por variável de ambiente (`DB_URL`, `DB_USERNAME`, `JWT_ISSUER_URI`, `JWT_AUDIENCE`,
   `PROVIDER_BASE_URL`, timeouts, `SPRING_PROFILES_ACTIVE=prod`); `DB_PASSWORD` e `PROVIDER_API_KEY` vêm

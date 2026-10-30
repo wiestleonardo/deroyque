@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <property name="uuid" value="UUID" dbms="postgresql,h2"/>
+    <property name="integer" value="INTEGER" dbms="postgresql,h2"/>
+    <property name="bigint" value="BIGINT" dbms="postgresql,h2"/>
+    <property name="varchar.20" value="VARCHAR(20)" dbms="postgresql,h2"/>
+    <property name="varchar.64" value="VARCHAR(64)" dbms="postgresql,h2"/>
+    <property name="varchar.100" value="VARCHAR(100)" dbms="postgresql,h2"/>
+    <property name="varchar.200" value="VARCHAR(200)" dbms="postgresql,h2"/>
+    <property name="timestamptz" value="TIMESTAMP WITH TIME ZONE" dbms="postgresql,h2"/>
+
+</databaseChangeLog>

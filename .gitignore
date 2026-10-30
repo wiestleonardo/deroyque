@@ -7,3 +7,9 @@ target/
 .DS_Store
 # Enunciado do desafio (não faz parte da solução)
 desafio-pdf/
+
+# Eclipse / STS
+.classpath
+.project
+.settings/
+.factorypath
