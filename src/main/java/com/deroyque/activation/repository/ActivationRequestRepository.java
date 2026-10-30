@@ -19,8 +19,6 @@ public interface ActivationRequestRepository extends JpaRepository<ActivationReq
 
     public abstract Optional<ActivationRequest> findByIdAndSourceSystem(UUID id, String sourceSystem);
 
-    public abstract Long countByStatus(ActivationStatusEnum status);
-
     @Query("""
             SELECT activationRequest
               FROM ActivationRequest activationRequest

@@ -95,8 +95,9 @@ the request stays `PROCESSING` until its 30 s lease expires and is processed aga
 | Provider response | Result | Retry? |
 |---|---|---|
 | 2xx | `COMPLETED` | No |
-| 4xx (except 408 and 429) | `FAILED` | No, the provider rejected the content |
+| 4xx (except 401, 403, 408 and 429) and 3xx | `FAILED` | No, the provider rejected the content |
 | 5xx, 408 | `PENDING` with backoff | Yes |
+| 401 / 403 | `PENDING` with backoff and an error log | Yes, the problem is our credential, not the request |
 | 429 / 503 with `Retry-After` | `PENDING` after `Retry-After` | Yes |
 | Timeout / network error | `PENDING` with backoff | Yes, with the same `Idempotency-Key` |
 

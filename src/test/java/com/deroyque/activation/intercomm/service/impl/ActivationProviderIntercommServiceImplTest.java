@@ -88,6 +88,22 @@ class ActivationProviderIntercommServiceImplTest {
     }
 
     @Test
+    void shouldNotTreatRedirectAsSuccess() {
+
+        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(302).withHeader("Location", "/elsewhere")));
+
+        this.assertFailure("PROVIDER_REJECTED_302", false, null);
+    }
+
+    @Test
+    void shouldRetryWhenProviderRejectsOurCredential() {
+
+        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(401)));
+
+        this.assertFailure("PROVIDER_HTTP_401", true, null);
+    }
+
+    @Test
     void shouldReadRetryAfterWhenProviderReturns503() {
 
         wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(503).withHeader("Retry-After", "17")));
