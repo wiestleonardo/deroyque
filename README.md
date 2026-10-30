@@ -79,11 +79,11 @@ primeiro (o caso comum de retry) e depois insere; se duas requisições iguais p
 tempo, só um insert passa e a outra lê o registro gravado. Consultar e depois inserir não basta sozinho, porque
 as duas requisições podem fazer a consulta antes de qualquer uma inserir.
 
-| Caso | Resposta |
-|---|---|
-| Mesmo `externalId`, mesmo conteúdo | `200` com o registro existente |
-| Mesmo `externalId`, conteúdo diferente | `409` com `existingRequestId` |
-| Duas requisições iguais ao mesmo tempo | uma recebe `201` e a outra `200` |
+| Caso | Resposta | Justificativa |
+|---|---|---|
+| Mesmo `externalId`, mesmo conteúdo | `200` com o registro existente | É um retry legítimo: o sistema de origem recebe o mesmo resultado da primeira chamada e não precisa tratar erro. O `200` (em vez de `201`) indica que nada foi criado agora. |
+| Mesmo `externalId`, conteúdo diferente | `409`, título "Solicitação duplicada", detalhe "O externalId '...' já foi usado com outro customerId ou productCode." e `existingRequestId` | Não é retry, é um conflito: devolver o registro antigo esconderia o erro e criar outro quebraria a regra. |
+| Duas requisições iguais ao mesmo tempo | uma recebe `201` e a outra `200` | O índice único deixa só um insert passar; a outra requisição relê o vencedor e cai no caso do retry. |
 
 O `externalId` é único por sistema de origem, porque dois sistemas podem gerar o mesmo valor.
 
@@ -95,14 +95,14 @@ chama o provedor fora de qualquer transação e grava o resultado. Como a solici
 chamada, nada se perde se a aplicação parar entre o commit e a chamada. Se parar durante a chamada, a
 solicitação fica em `PROCESSING` até a reserva de 30 s expirar e é processada de novo.
 
-| Retorno do provedor | Resultado | Nova tentativa? |
-|---|---|---|
-| 2xx | `COMPLETED` | Não |
-| 4xx (exceto 401, 403, 408 e 429) e 3xx | `FAILED` | Não, o provedor recusou o conteúdo |
-| 5xx, 408 | `PENDING` com backoff | Sim |
-| 401 / 403 | `PENDING` com backoff e log de erro | Sim, o problema é a nossa credencial, não a solicitação |
-| 429 / 503 com `Retry-After` | `PENDING` depois do `Retry-After` | Sim |
-| Timeout / erro de rede | `PENDING` com backoff | Sim, com a mesma `Idempotency-Key` |
+| Retorno do provedor | Novo status | Nova tentativa? | Justificativa |
+|---|---|---|---|
+| Sucesso (2xx) | `COMPLETED` | Não | O provedor confirmou a ativação. |
+| HTTP 400 (e os demais 4xx, exceto 401, 403, 408 e 429) e 3xx | `FAILED` (`PROVIDER_REJECTED_400`) | Não | O provedor recusou o conteúdo; repetir daria o mesmo resultado. |
+| HTTP 500 (e os demais 5xx, 408) | `PENDING` com backoff | Sim | Falha temporária do provedor; depois de 5 tentativas vira `FAILED`. |
+| Timeout / erro de rede | `PENDING` com backoff | Sim, com a mesma `Idempotency-Key` | Não sabemos se ativou; a chave evita ativação duplicada no provedor. |
+| HTTP 429 / 503 com `Retry-After` | `PENDING` até o `Retry-After` | Sim | O provedor disse quando aceita de novo; tentar antes só aumenta a carga. |
+| 401 / 403 | `PENDING` com backoff e log de erro | Sim | O problema é a nossa credencial, não a solicitação; volta a funcionar quando o segredo for corrigido. |
 
 - Timeout de conexão de 2 s e de leitura de 3 s, configuráveis.
 - Timeout é ambíguo (o provedor pode ter ativado), por isso toda chamada envia `Idempotency-Key` com o id da
@@ -196,6 +196,8 @@ API de 300 ms para 2,5 s, CPU 45%, memória 60%, algumas consultas de 50 ms para
 - Rate limit e limite de tamanho do corpo: no API Gateway.
 - Circuit breaker para o provedor: Resilience4j no service do provedor.
 - Tracing distribuído: Micrometer Tracing com OpenTelemetry.
+- Métrica de solicitações por status: um gauge do Micrometer com a contagem por `fl_situacao`, consultada com
+  cache curto para não pesar no banco a cada coleta do Prometheus.
 - Solicitações que esgotaram as tentativas: alerta e um endpoint de reprocessamento.
 - `docker build` e `docker compose` não rodaram na minha máquina (sem Docker); o CI faz o build da imagem.
 
