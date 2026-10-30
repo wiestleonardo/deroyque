@@ -44,8 +44,8 @@ O mock do provedor responde pelo `productCode`: `REJECT` → 400, `ERROR` → 50
 
 - Campos obrigatórios com até 64 caracteres. `size` de 1 a 100 (acima disso, 400).
 - `201` com `Location` ao criar. Datas em UTC, ISO-8601. DTOs separados da entidade.
-- Erros em Problem Details (RFC 9457) com `traceId`: 400, 401/403, 404, 409 e 500, sem stack trace nem detalhe
-  interno. Erro do provedor não chega ao POST (a chamada é assíncrona): aparece no `status` e no `failureReason`.
+- Erros em Problem Details (RFC 9457) com `traceId`: 400 (campos ou JSON inválido), 401/403, 404, 405, 409, 415
+  e 500, todos no mesmo formato e sem stack trace nem detalhe interno. Erro do provedor não chega ao POST (a chamada é assíncrona): aparece no `status` e no `failureReason`.
 
 ## Decisões técnicas
 

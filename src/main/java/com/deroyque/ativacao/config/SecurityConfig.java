@@ -54,7 +54,8 @@ public class SecurityConfig {
                             .requestMatchers(HttpMethod.POST, RotaConstants.SolicitacaoAtivacao.BASE).hasAuthority(SegurancaConstants.AUTORIDADE_ESCRITA)
                             .requestMatchers(HttpMethod.GET, RotaConstants.SolicitacaoAtivacao.BASE, RotaConstants.SolicitacaoAtivacao.BASE + "/**")
                             .hasAuthority(SegurancaConstants.AUTORIDADE_LEITURA)
-                            .anyRequest().denyAll();
+                            // Qualquer outro caminho exige token e segue para o MVC, que responde 404 ou 405.
+                            .anyRequest().authenticated();
                 })
                 .oauth2ResourceServer(oauth2ResourceServer -> oauth2ResourceServer
                         .jwt(Customizer.withDefaults())

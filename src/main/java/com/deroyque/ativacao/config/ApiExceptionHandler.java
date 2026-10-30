@@ -8,6 +8,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -16,6 +19,7 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 import java.util.Map;
@@ -76,6 +80,34 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     @Override
+    protected ResponseEntity<Object> handleHttpMessageNotReadable(HttpMessageNotReadableException httpMessageNotReadableException,
+            HttpHeaders httpHeaders, HttpStatusCode httpStatusCode, WebRequest webRequest) {
+
+        return this.responder(ErroEnum.CORPO_INVALIDO, httpHeaders, webRequest);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleNoResourceFoundException(NoResourceFoundException noResourceFoundException, HttpHeaders httpHeaders,
+            HttpStatusCode httpStatusCode, WebRequest webRequest) {
+
+        return this.responder(ErroEnum.RECURSO_NAO_ENCONTRADO, httpHeaders, webRequest);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleHttpRequestMethodNotSupported(HttpRequestMethodNotSupportedException httpRequestMethodNotSupportedException,
+            HttpHeaders httpHeaders, HttpStatusCode httpStatusCode, WebRequest webRequest) {
+
+        return this.responder(ErroEnum.METODO_NAO_SUPORTADO, httpHeaders, webRequest, httpRequestMethodNotSupportedException.getMethod());
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(HttpMediaTypeNotSupportedException httpMediaTypeNotSupportedException,
+            HttpHeaders httpHeaders, HttpStatusCode httpStatusCode, WebRequest webRequest) {
+
+        return this.responder(ErroEnum.TIPO_CONTEUDO_NAO_SUPORTADO, httpHeaders, webRequest);
+    }
+
+    @Override
     protected ResponseEntity<Object> handleExceptionInternal(Exception exception, Object body, HttpHeaders httpHeaders,
             HttpStatusCode httpStatusCode, WebRequest webRequest) {
 
@@ -85,6 +117,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         }
 
         return super.handleExceptionInternal(exception, body, httpHeaders, httpStatusCode, webRequest);
+    }
+
+    // Mantém os headers do Spring, como o Allow do 405.
+    private ResponseEntity<Object> responder(ErroEnum erroEnum, HttpHeaders httpHeaders, WebRequest webRequest, Object... argumentos) {
+
+        return ResponseEntity.status(erroEnum.getHttpStatus()).headers(httpHeaders)
+                .body(ProblemDetails.montar(erroEnum, adquirirCaminho(webRequest), argumentos));
     }
 
     private ResponseEntity<Object> responderDadosInvalidos(String caminho, List<Map<String, String>> listaErroCampo) {

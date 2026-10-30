@@ -9,6 +9,11 @@ import org.springframework.http.HttpStatus;
 public enum ErroEnum {
 
     DADOS_INVALIDOS("validation-error", HttpStatus.BAD_REQUEST, "Dados inválidos", "Um ou mais campos não passaram na validação."),
+    CORPO_INVALIDO("validation-error", HttpStatus.BAD_REQUEST, "Dados inválidos", "O corpo da requisição não é um JSON válido."),
+    RECURSO_NAO_ENCONTRADO("resource-not-found", HttpStatus.NOT_FOUND, "Recurso não encontrado", "O caminho informado não existe."),
+    METODO_NAO_SUPORTADO("method-not-allowed", HttpStatus.METHOD_NOT_ALLOWED, "Método não suportado", "O método %s não é aceito neste caminho."),
+    TIPO_CONTEUDO_NAO_SUPORTADO("unsupported-media-type", HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Tipo de conteúdo não suportado",
+            "Envie o corpo como application/json."),
     SOLICITACAO_NAO_ENCONTRADA("not-found", HttpStatus.NOT_FOUND, "Solicitação não encontrada", "Nenhuma solicitação encontrada com o id informado."),
     SOLICITACAO_DUPLICADA("duplicate-request", HttpStatus.CONFLICT, "Solicitação duplicada",
             "O externalId '%s' já foi usado com outro customerId ou productCode."),

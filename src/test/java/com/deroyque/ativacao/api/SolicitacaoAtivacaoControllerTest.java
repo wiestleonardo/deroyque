@@ -122,8 +122,34 @@ class SolicitacaoAtivacaoControllerTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{nao-e-json").exchange();
 
         assertThat(mvcTestResult).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(mvcTestResult).bodyJson().extractingPath("$.title").isEqualTo("Dados inválidos");
         assertThat(mvcTestResult).bodyJson().hasPath("$.traceId");
         assertThat(mvcTestResult).bodyJson().doesNotHavePath("$.trace");
+    }
+
+    @Test
+    void deveResponderNotFoundQuandoRotaNaoExistir() {
+
+        assertThat(mockMvcTester.get().uri("/api/v1/inexistente").with(TokenTeste.leitura()))
+                .hasStatus(HttpStatus.NOT_FOUND)
+                .bodyJson().extractingPath("$.title").isEqualTo("Recurso não encontrado");
+    }
+
+    @Test
+    void deveResponderMethodNotAllowedQuandoMetodoNaoForSuportado() {
+
+        assertThat(mockMvcTester.delete().uri(ROTA_ADQUIRIR, ID_SOLICITACAO).with(TokenTeste.leitura()))
+                .hasStatus(HttpStatus.METHOD_NOT_ALLOWED)
+                .bodyJson().extractingPath("$.detail").isEqualTo("O método DELETE não é aceito neste caminho.");
+    }
+
+    @Test
+    void deveResponderUnsupportedMediaTypeQuandoCorpoNaoForJson() {
+
+        assertThat(mockMvcTester.post().uri(RotaConstants.SolicitacaoAtivacao.BASE).with(TokenTeste.escrita())
+                .contentType(MediaType.TEXT_PLAIN).content("texto"))
+                .hasStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .bodyJson().extractingPath("$.title").isEqualTo("Tipo de conteúdo não suportado");
     }
 
     @Test
