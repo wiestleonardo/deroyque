@@ -7,7 +7,7 @@
     <include file="db.types.xml" relativeToChangelogFile="true"/>
 
     <!-- beg: upgrade -->
-    <include file="upgrade/20261029_120000_create_table_activationrequest.xml" relativeToChangelogFile="true"/>
+    <include file="upgrade/20261029_120000_create_table_solicitacaoativacao.xml" relativeToChangelogFile="true"/>
     <!-- end: upgrade -->
 
 </databaseChangeLog>

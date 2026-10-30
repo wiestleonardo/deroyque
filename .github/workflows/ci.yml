@@ -21,10 +21,10 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Build and test
+      - name: Build e testes
         run: ./mvnw -B verify
 
-      - name: Test reports
+      - name: Relatórios de teste
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -33,5 +33,5 @@ jobs:
             target/surefire-reports
             target/failsafe-reports
 
-      - name: Build Docker image
+      - name: Build da imagem Docker
         run: docker build -t activation-service:${{ github.sha }} .
