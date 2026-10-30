@@ -461,4 +461,11 @@ LOCKED` na reserva para alto volume, documentação OpenAPI e alertas sobre o ta
 ## Uso de IA
 
 O Claude Code (Anthropic) ajudou a ler o desafio e a escrever código, testes, arquivos de Docker/CI e este
-README. Revisei as decisões e o código e validei com `./mvnw verify` e testes manuais.
+README. Ele trabalhou com uma skill particular de Spring Boot, escrita por mim, com as minhas convenções de
+código.
+
+A arquitetura e os padrões do projeto são decisão minha: a divisão em controller, service, repository e
+intercomm, a nomenclatura, a organização dos pacotes e a forma de tratar erros e integrações. São padrões que eu
+mesmo defini e já validei em vários projetos. A IA seguiu esses padrões, sem escolhê-los.
+
+Revisei as decisões e o código e validei com `./mvnw verify` e testes manuais.
