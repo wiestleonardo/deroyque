@@ -3,10 +3,14 @@ package com.deroyque.activation.exception;
 import com.deroyque.activation.enumerator.ErrorEnum;
 import lombok.Getter;
 
+import java.io.Serial;
 import java.util.Map;
 
 @Getter
 public class BusinessServiceException extends RuntimeException {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private final ErrorEnum errorEnum;
 
