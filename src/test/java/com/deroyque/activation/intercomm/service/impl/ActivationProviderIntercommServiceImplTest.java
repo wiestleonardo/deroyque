@@ -2,24 +2,19 @@ package com.deroyque.activation.intercomm.service.impl;
 
 import com.deroyque.activation.config.ActivationProviderProperties;
 import com.deroyque.activation.config.HttpClientConfig;
+import com.deroyque.activation.config.IntegrationErrorHandler;
+import com.deroyque.activation.exception.IntegrationException;
 import com.deroyque.activation.repository.domain.ActivationRequest;
 import com.deroyque.activation.util.CorrelationUtil;
-import com.deroyque.activation.vo.ActivationResultVO.PermanentFailure;
-import com.deroyque.activation.vo.ActivationResultVO.Success;
-import com.deroyque.activation.vo.ActivationResultVO.TransientFailure;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.RestClient;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneOffset;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
@@ -29,10 +24,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ActivationProviderIntercommServiceImplTest {
 
-    private static final Instant NOW = Instant.parse("2026-10-26T14:00:00Z");
     private static final String ACTIVATE_PATH = "/provider/v1/activate";
 
     @RegisterExtension
@@ -45,9 +40,12 @@ class ActivationProviderIntercommServiceImplTest {
     @BeforeEach
     void setUp() {
 
-        this.activationProviderIntercommServiceImpl = createService(wireMockExtension.baseUrl(), Duration.ofSeconds(1), Duration.ofMillis(500),
-                "provider-key");
-        this.activationRequest = ActivationRequest.create("system-a", "EXT-1", "CUST-1", "INTERNET-500", "corr-123", NOW);
+        ActivationProviderProperties activationProviderProperties = new ActivationProviderProperties(wireMockExtension.baseUrl(), Duration.ofSeconds(1),
+                Duration.ofMillis(500), "provider-key");
+
+        this.activationProviderIntercommServiceImpl = new ActivationProviderIntercommServiceImpl(
+                new HttpClientConfig().activationProviderClient(RestClient.builder(), new IntegrationErrorHandler(), activationProviderProperties));
+        this.activationRequest = ActivationRequest.create("system-a", "EXT-1", "CUST-1", "INTERNET-500", "corr-123", Instant.now());
     }
 
     @AfterEach
@@ -57,12 +55,12 @@ class ActivationProviderIntercommServiceImplTest {
     }
 
     @Test
-    void shouldSendIdempotencyKeyCorrelationAndCredentialWhenActivationSucceeds() {
+    void shouldSendIdempotencyKeyCorrelationAndCredentialWhenActivating() {
 
         wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(200)));
         CorrelationUtil.set("corr-123");
 
-        assertThat(this.activationProviderIntercommServiceImpl.activate(this.activationRequest)).isInstanceOf(Success.class);
+        this.activationProviderIntercommServiceImpl.activate(this.activationRequest);
 
         wireMockExtension.verify(postRequestedFor(urlEqualTo(ACTIVATE_PATH))
                 .withHeader("Idempotency-Key", equalTo(this.activationRequest.getId().toString()))
@@ -73,77 +71,47 @@ class ActivationProviderIntercommServiceImplTest {
                         """.formatted(this.activationRequest.getId()))));
     }
 
-    @ParameterizedTest
-    @ValueSource(ints = {400, 404, 409, 422})
-    void shouldBePermanentFailureWhenProviderReturnsClientError(int status) {
+    @Test
+    void shouldNotRetryWhenProviderReturns400() {
 
-        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(status)));
+        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(400)));
 
-        assertThat(this.activationProviderIntercommServiceImpl.activate(this.activationRequest))
-                .isEqualTo(new PermanentFailure("PROVIDER_REJECTED_" + status));
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {500, 502, 504, 408})
-    void shouldBeTransientFailureWhenProviderReturnsServerError(int status) {
-
-        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(status)));
-
-        assertThat(this.activationProviderIntercommServiceImpl.activate(this.activationRequest)).isEqualTo(new TransientFailure("PROVIDER_HTTP_" + status));
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {429, 503})
-    void shouldHonorRetryAfterInSecondsWhenProviderAsksToWait(int status) {
-
-        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(status).withHeader("Retry-After", "17")));
-
-        assertThat(this.activationProviderIntercommServiceImpl.activate(this.activationRequest))
-                .isEqualTo(new TransientFailure("PROVIDER_HTTP_" + status, Duration.ofSeconds(17)));
+        this.assertFailure("PROVIDER_REJECTED_400", false, null);
     }
 
     @Test
-    void shouldParseRetryAfterWhenItIsAnHttpDate() {
+    void shouldRetryWhenProviderReturns500() {
 
-        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(503).withHeader("Retry-After", "Mon, 26 Oct 2026 14:01:00 GMT")));
+        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(500)));
 
-        assertThat(this.activationProviderIntercommServiceImpl.activate(this.activationRequest))
-                .isEqualTo(new TransientFailure("PROVIDER_HTTP_503", Duration.ofSeconds(60)));
+        this.assertFailure("PROVIDER_HTTP_500", true, null);
     }
 
     @Test
-    void shouldBeTransientFailureWhenProviderRejectsCredential() {
+    void shouldReadRetryAfterWhenProviderReturns503() {
 
-        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(401)));
+        wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(503).withHeader("Retry-After", "17")));
 
-        assertThat(this.activationProviderIntercommServiceImpl.activate(this.activationRequest)).isEqualTo(new TransientFailure("PROVIDER_AUTH_401"));
+        this.assertFailure("PROVIDER_HTTP_503", true, Duration.ofSeconds(17));
     }
 
     @Test
-    void shouldBeTimeoutWhenProviderAnswersAfterReadTimeout() {
+    void shouldRetryWhenProviderAnswersAfterReadTimeout() {
 
         wireMockExtension.stubFor(post(ACTIVATE_PATH).willReturn(aResponse().withStatus(200).withFixedDelay(1500)));
 
-        assertThat(this.activationProviderIntercommServiceImpl.activate(this.activationRequest)).isEqualTo(new TransientFailure("PROVIDER_TIMEOUT"));
+        this.assertFailure("PROVIDER_TIMEOUT", true, null);
     }
 
-    @Test
-    void shouldBeTransientFailureWhenProviderIsUnreachable() {
+    private void assertFailure(String reason, Boolean retryable, Duration retryAfter) {
 
-        ActivationProviderIntercommServiceImpl unreachableProvider = createService("http://localhost:1", Duration.ofMillis(300), Duration.ofMillis(300), null);
+        assertThatThrownBy(() -> this.activationProviderIntercommServiceImpl.activate(this.activationRequest))
+                .isInstanceOfSatisfying(IntegrationException.class, integrationException -> {
 
-        assertThat(unreachableProvider.activate(this.activationRequest))
-                .isInstanceOf(TransientFailure.class)
-                .extracting("reason")
-                .isIn("PROVIDER_UNREACHABLE", "PROVIDER_TIMEOUT");
-    }
-
-    private static ActivationProviderIntercommServiceImpl createService(String baseUrl, Duration connectTimeout, Duration readTimeout, String apiKey) {
-
-        ActivationProviderProperties activationProviderProperties = new ActivationProviderProperties(baseUrl, connectTimeout, readTimeout, apiKey);
-
-        return new ActivationProviderIntercommServiceImpl(new HttpClientConfig().activationProviderClient(RestClient.builder(), activationProviderProperties),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                    assertThat(integrationException.getReason()).isEqualTo(reason);
+                    assertThat(integrationException.getRetryable()).isEqualTo(retryable);
+                    assertThat(integrationException.getRetryAfter()).isEqualTo(retryAfter);
+                });
     }
 
 }

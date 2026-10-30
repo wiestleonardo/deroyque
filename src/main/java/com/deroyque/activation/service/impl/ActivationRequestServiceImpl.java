@@ -12,7 +12,6 @@ import com.deroyque.activation.repository.domain.ActivationRequest;
 import com.deroyque.activation.service.ActivationRequestService;
 import com.deroyque.activation.service.AuthenticatedSystemService;
 import com.deroyque.activation.util.CorrelationUtil;
-import com.deroyque.activation.util.StringUtil;
 import com.deroyque.activation.vo.CreationResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,24 +31,23 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ActivationRequestServiceImpl implements ActivationRequestService {
 
-    private static final String SORT_FIELD = "createdAt";
-    private static final String EXISTING_ID_PROPERTY = "existingRequestId";
+    private static final Sort NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "createdAt");
 
     private final ActivationRequestRepository activationRequestRepository;
 
     private final ActivationRequestMapper activationRequestMapper;
 
-    private final Clock clock;
-
     private final AuthenticatedSystemService authenticatedSystemService;
+
+    private final Clock clock;
 
     @Override
     public CreationResultVO create(CreateActivationRequestDTO createActivationRequestDTO) {
 
         String sourceSystem = authenticatedSystemService.getSourceSystem();
 
-        Optional<ActivationRequest> existingActivationRequest = activationRequestRepository
-                .findBySourceSystemAndExternalId(sourceSystem, createActivationRequestDTO.externalId());
+        Optional<ActivationRequest> existingActivationRequest = activationRequestRepository.findBySourceSystemAndExternalId(sourceSystem,
+                createActivationRequestDTO.externalId());
 
         if (existingActivationRequest.isPresent()) {
 
@@ -65,16 +63,14 @@ public class ActivationRequestServiceImpl implements ActivationRequestService {
 
             log.info("Activation request {} created for externalId {}", savedActivationRequest.getId(), savedActivationRequest.getExternalId());
 
-            return new CreationResultVO(activationRequestMapper.map(savedActivationRequest), Boolean.TRUE);
+            return new CreationResultVO(activationRequestMapper.map(savedActivationRequest), true);
 
         } catch (DataIntegrityViolationException dataIntegrityViolationException) {
 
-            // Two requests passed the lookup above at the same time; the unique index decided which one is saved.
+            // Two identical requests passed the lookup above at the same time; the unique index let only one of them insert.
             ActivationRequest winningActivationRequest = activationRequestRepository
                     .findBySourceSystemAndExternalId(sourceSystem, createActivationRequestDTO.externalId())
                     .orElseThrow(() -> dataIntegrityViolationException);
-
-            log.info("Concurrent creation of externalId {} resolved by the unique index", createActivationRequestDTO.externalId());
 
             return this.resolveExisting(winningActivationRequest, createActivationRequestDTO);
         }
@@ -83,36 +79,31 @@ public class ActivationRequestServiceImpl implements ActivationRequestService {
     @Override
     public ActivationRequestDTO get(UUID id) {
 
-        ActivationRequest activationRequest = activationRequestRepository.findByIdAndSourceSystem(id, authenticatedSystemService.getSourceSystem())
+        return activationRequestRepository.findByIdAndSourceSystem(id, authenticatedSystemService.getSourceSystem())
+                .map(activationRequestMapper::map)
                 .orElseThrow(() -> new BusinessServiceException(ErrorEnum.REQUEST_NOT_FOUND));
-
-        return activationRequestMapper.map(activationRequest);
     }
 
     @Override
-    public PageDTO<ActivationRequestDTO> list(String status, String customerId, Integer page, Integer size) {
+    public PageDTO<ActivationRequestDTO> list(ActivationStatusEnum status, String customerId, Integer page, Integer size) {
 
-        String sourceSystem = authenticatedSystemService.getSourceSystem();
+        String customerIdFilter = customerId == null || customerId.isBlank() ? null : customerId;
 
-        ActivationStatusEnum activationStatusEnum = StringUtil.notEmpty(status) ? ActivationStatusEnum.getByCode(status) : null;
-        String customerIdFilter = StringUtil.notEmpty(customerId) ? customerId : null;
+        Page<ActivationRequest> activationRequestPage = activationRequestRepository.listByFilter(authenticatedSystemService.getSourceSystem(), status,
+                customerIdFilter, PageRequest.of(page, size, NEWEST_FIRST));
 
-        Page<ActivationRequest> activationRequestPage = activationRequestRepository.listByFilter(sourceSystem, activationStatusEnum,
-                customerIdFilter, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, SORT_FIELD)));
-
-        return new PageDTO<>(activationRequestPage.getContent().stream().map(activationRequestMapper::map).toList(),
-                activationRequestPage.getNumber(), activationRequestPage.getSize(), activationRequestPage.getTotalElements(),
-                activationRequestPage.getTotalPages());
+        return new PageDTO<>(activationRequestPage.getContent().stream().map(activationRequestMapper::map).toList(), activationRequestPage.getNumber(),
+                activationRequestPage.getSize(), activationRequestPage.getTotalElements(), activationRequestPage.getTotalPages());
     }
 
     private CreationResultVO resolveExisting(ActivationRequest activationRequest, CreateActivationRequestDTO createActivationRequestDTO) {
 
         if (activationRequest.hasSameContent(createActivationRequestDTO.customerId(), createActivationRequestDTO.productCode())) {
 
-            return new CreationResultVO(activationRequestMapper.map(activationRequest), Boolean.FALSE);
+            return new CreationResultVO(activationRequestMapper.map(activationRequest), false);
         }
 
-        throw new BusinessServiceException(ErrorEnum.DUPLICATE_REQUEST, Map.of(EXISTING_ID_PROPERTY, activationRequest.getId()),
+        throw new BusinessServiceException(ErrorEnum.DUPLICATE_REQUEST, Map.of("existingRequestId", activationRequest.getId()),
                 createActivationRequestDTO.externalId());
     }
 

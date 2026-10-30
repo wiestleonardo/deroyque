@@ -24,8 +24,7 @@ public final class RouteConstants {
 
         }
 
-        public static final String BASE = "/provider";
-        public static final String ACTIVATE = BASE + "/v1/activate";
+        public static final String ACTIVATE = "/provider/v1/activate";
     }
 
     public static final class LocalDev {

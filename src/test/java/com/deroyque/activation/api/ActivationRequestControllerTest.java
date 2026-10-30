@@ -2,8 +2,6 @@ package com.deroyque.activation.api;
 
 import com.deroyque.activation.api.impl.ActivationRequestControllerImpl;
 import com.deroyque.activation.config.CorrelationIdFilter;
-import com.deroyque.activation.config.ProblemDetailFactory;
-import com.deroyque.activation.config.RequestSizeFilter;
 import com.deroyque.activation.config.SecurityConfig;
 import com.deroyque.activation.constants.RouteConstants;
 import com.deroyque.activation.dto.ActivationRequestDTO;
@@ -35,7 +33,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 @WebMvcTest(ActivationRequestControllerImpl.class)
-@Import({SecurityConfig.class, ProblemDetailFactory.class, CorrelationIdFilter.class, RequestSizeFilter.class})
+@Import({SecurityConfig.class, CorrelationIdFilter.class})
 class ActivationRequestControllerTest {
 
     private static final UUID REQUEST_ID = UUID.fromString("0b7f3c1e-5d2a-4c4e-9a51-2f8d7b1e6c90");
@@ -118,8 +116,8 @@ class ActivationRequestControllerTest {
         assertThat(mvcTestResult).bodyJson().extractingPath("$.title").isEqualTo("Invalid data");
         assertThat(mvcTestResult).bodyJson().extractingPath("$.instance").isEqualTo(RouteConstants.ActivationRequest.BASE);
         assertThat(mvcTestResult).bodyJson().extractingPath("$.traceId").isEqualTo("abc123");
-        assertThat(mvcTestResult).bodyJson().extractingPath("$.errors[*].field").asArray().contains("customerId", "externalId", "productCode");
-        assertThat(mvcTestResult).bodyJson().extractingPath("$.errors[?(@.field == 'customerId')].message").asArray().containsExactly("is required");
+        assertThat(mvcTestResult).bodyJson().extractingPath("$.errors[*].field").asArray().containsExactlyInAnyOrder("customerId", "productCode");
+        assertThat(mvcTestResult).bodyJson().extractingPath("$.errors[?(@.field == 'customerId')].message").asArray().containsExactly("must not be blank");
         then(activationRequestService).shouldHaveNoInteractions();
     }
 
@@ -133,14 +131,6 @@ class ActivationRequestControllerTest {
         assertThat(mvcTestResult).bodyJson().hasPath("$.traceId");
         assertThat(mvcTestResult).bodyJson().doesNotHavePath("$.trace");
         assertThat(mvcTestResult).bodyJson().doesNotHavePath("$.exception");
-    }
-
-    @Test
-    void shouldReturnPayloadTooLargeWhenBodyExceedsLimit() {
-
-        assertThat(mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
-                .contentType(MediaType.APPLICATION_JSON).content("x".repeat(17 * 1024)))
-                .hasStatus(HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
     @Test
@@ -187,10 +177,11 @@ class ActivationRequestControllerTest {
     }
 
     @Test
-    void shouldReturnBadRequestWhenPageSizeExceedsLimit() {
+    void shouldReturnBadRequestWithFieldWhenPageSizeExceedsLimit() {
 
         assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("size", "500").with(TestTokens.reader()))
                 .hasStatus(HttpStatus.BAD_REQUEST)
+                .hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .bodyJson().extractingPath("$.errors[0].field").isEqualTo("size");
     }
 

@@ -3,35 +3,24 @@ package com.deroyque.activation.service.impl;
 import com.deroyque.activation.config.ProcessingProperties;
 import com.deroyque.activation.constants.FailureReasonConstants;
 import com.deroyque.activation.enumerator.ActivationStatusEnum;
+import com.deroyque.activation.exception.IntegrationException;
 import com.deroyque.activation.intercomm.service.ActivationProviderIntercommService;
 import com.deroyque.activation.repository.ActivationRequestRepository;
 import com.deroyque.activation.repository.domain.ActivationRequest;
 import com.deroyque.activation.service.ActivationProcessingService;
 import com.deroyque.activation.util.CorrelationUtil;
-import com.deroyque.activation.util.IntegerUtil;
-import com.deroyque.activation.util.ObjectUtil;
-import com.deroyque.activation.vo.ActivationResultVO;
-import com.deroyque.activation.vo.ActivationResultVO.PermanentFailure;
-import com.deroyque.activation.vo.ActivationResultVO.Success;
-import com.deroyque.activation.vo.ActivationResultVO.TransientFailure;
-import com.deroyque.activation.vo.RetryPolicyVO;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Limit;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @Service
@@ -39,24 +28,14 @@ import java.util.concurrent.Semaphore;
 public class ActivationProcessingServiceImpl implements ActivationProcessingService {
 
     private static final List<ActivationStatusEnum> PROCESSABLE_STATUS_LIST = List.of(ActivationStatusEnum.PENDING, ActivationStatusEnum.PROCESSING);
-    private static final String PROVIDER_CALLS_METRIC = "activation.provider.calls";
-    private static final String TRANSITIONS_METRIC = "activation.requests.transitions";
-    private static final String OUTCOME_TAG = "outcome";
-    private static final String STATUS_TAG = "status";
 
     private final ActivationRequestRepository activationRequestRepository;
 
     private final ActivationProviderIntercommService activationProviderIntercommService;
 
-    private final RetryPolicyVO retryPolicyVO;
-
     private final ProcessingProperties processingProperties;
 
-    private final TransactionTemplate transactionTemplate;
-
     private final Clock clock;
-
-    private final MeterRegistry meterRegistry;
 
     @Override
     public void processPending() {
@@ -64,19 +43,15 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
         List<UUID> idList = activationRequestRepository.listIdsReadyToProcess(PROCESSABLE_STATUS_LIST, clock.instant(),
                 Limit.of(processingProperties.batchSize()));
 
-        if (idList.isEmpty()) {
+        for (UUID id : idList) {
 
-            return;
-        }
+            try {
 
-        // Kept below the connection pool size: virtual threads do not limit how many tasks ask for a connection at once.
-        Semaphore semaphore = new Semaphore(processingProperties.concurrencyLimit());
+                this.process(id);
 
-        try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
+            } catch (RuntimeException runtimeException) {
 
-            for (UUID id : idList) {
-
-                executorService.submit(() -> this.processWithLimit(id, semaphore));
+                log.error("Unexpected failure while processing activation request {}", id, runtimeException);
             }
         }
     }
@@ -84,23 +59,18 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
     @Override
     public void process(UUID id) {
 
-        Optional<ActivationRequest> claimedActivationRequest = this.claim(id);
+        ActivationRequest activationRequest = this.claim(id);
 
-        if (claimedActivationRequest.isEmpty()) {
+        if (activationRequest == null) {
 
             return;
         }
 
-        ActivationRequest activationRequest = claimedActivationRequest.get();
-        String correlationId = activationRequest.getCorrelationId();
-
-        CorrelationUtil.set(ObjectUtil.isNull(correlationId) ? id.toString() : correlationId);
+        CorrelationUtil.set(activationRequest.getCorrelationId() == null ? id.toString() : activationRequest.getCorrelationId());
 
         try {
 
-            ActivationResultVO activationResultVO = this.callProvider(activationRequest);
-
-            this.applyResult(activationRequest, activationResultVO);
+            this.callProvider(activationRequest);
 
         } finally {
 
@@ -108,148 +78,111 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
         }
     }
 
-    private void processWithLimit(UUID id, Semaphore semaphore) {
+    // The provider is called outside any transaction; @Version makes sure only one instance claims and saves each request.
+    private ActivationRequest claim(UUID id) {
+
+        ActivationRequest activationRequest = activationRequestRepository.findById(id).orElse(null);
+        Instant now = clock.instant();
+
+        if (activationRequest == null) {
+
+            return null;
+        }
+
+        if (activationRequest.isLeaseExpired(now)) {
+
+            log.warn("Lease expired for activation request {} after {} attempts", id, activationRequest.getAttempts());
+
+            if (activationRequest.getAttempts() >= processingProperties.maxAttempts()) {
+
+                activationRequest.fail(FailureReasonConstants.MAX_ATTEMPTS_PREFIX + FailureReasonConstants.LEASE_EXPIRED, now);
+                this.save(activationRequest);
+                return null;
+            }
+
+            activationRequest.scheduleRetry(FailureReasonConstants.LEASE_EXPIRED, now, now);
+        }
+
+        if (!activationRequest.isReadyToProcess(now)) {
+
+            return null;
+        }
+
+        activationRequest.startProcessing(now, processingProperties.leaseDuration());
+
+        return this.save(activationRequest);
+    }
+
+    private void callProvider(ActivationRequest activationRequest) {
 
         try {
 
-            semaphore.acquire();
+            activationProviderIntercommService.activate(activationRequest);
+            activationRequest.complete(clock.instant());
 
-        } catch (InterruptedException interruptedException) {
+            log.info("Activation request {} completed on attempt {}", activationRequest.getId(), activationRequest.getAttempts());
 
-            Thread.currentThread().interrupt();
+        } catch (IntegrationException integrationException) {
+
+            this.handleFailure(activationRequest, integrationException);
+        }
+
+        this.save(activationRequest);
+    }
+
+    private void handleFailure(ActivationRequest activationRequest, IntegrationException integrationException) {
+
+        Instant now = clock.instant();
+
+        log.warn("Provider call failed for activation request {} on attempt {}: {}", activationRequest.getId(), activationRequest.getAttempts(),
+                integrationException.getReason());
+
+        if (!integrationException.getRetryable()) {
+
+            activationRequest.fail(integrationException.getReason(), now);
             return;
         }
 
-        try {
+        if (activationRequest.getAttempts() >= processingProperties.maxAttempts()) {
 
-            this.process(id);
-
-        } catch (RuntimeException runtimeException) {
-
-            log.error("Unexpected failure while processing activation request {}", id, runtimeException);
-
-        } finally {
-
-            semaphore.release();
+            activationRequest.fail(FailureReasonConstants.MAX_ATTEMPTS_PREFIX + integrationException.getReason(), now);
+            return;
         }
+
+        activationRequest.scheduleRetry(integrationException.getReason(),
+                now.plus(this.retryDelay(activationRequest.getAttempts(), integrationException.getRetryAfter())), now);
     }
 
-    private Optional<ActivationRequest> claim(UUID id) {
+    // Exponential backoff with jitter, capped at maxBackoff; Retry-After from the provider wins when present.
+    private Duration retryDelay(Integer attempts, Duration retryAfter) {
+
+        if (retryAfter != null) {
+
+            return retryAfter.compareTo(processingProperties.maxBackoff()) > 0 ? processingProperties.maxBackoff() : retryAfter;
+        }
+
+        Duration delay = processingProperties.initialBackoff().multipliedBy(1L << Math.min(attempts - 1, 10));
+
+        if (delay.compareTo(processingProperties.maxBackoff()) > 0) {
+
+            delay = processingProperties.maxBackoff();
+        }
+
+        return delay.plusMillis(ThreadLocalRandom.current().nextLong(delay.toMillis() / 2 + 1));
+    }
+
+    private ActivationRequest save(ActivationRequest activationRequest) {
 
         try {
 
-            return transactionTemplate.execute(transactionStatus -> {
-
-                Optional<ActivationRequest> foundActivationRequest = activationRequestRepository.findById(id);
-
-                if (foundActivationRequest.isEmpty()) {
-
-                    return Optional.empty();
-                }
-
-                ActivationRequest activationRequest = foundActivationRequest.get();
-                Instant now = clock.instant();
-
-                if (activationRequest.isLeaseExpired(now)) {
-
-                    log.warn("Lease expired for activation request {} after {} attempts", id, activationRequest.getAttempts());
-
-                    if (this.isOutOfAttempts(activationRequest)) {
-
-                        activationRequest.fail(FailureReasonConstants.MAX_ATTEMPTS_PREFIX + FailureReasonConstants.LEASE_EXPIRED, now);
-                        activationRequestRepository.saveAndFlush(activationRequest);
-                        this.countTransition(activationRequest);
-
-                        return Optional.empty();
-                    }
-
-                    activationRequest.releaseExpiredLease(FailureReasonConstants.LEASE_EXPIRED, now);
-                }
-
-                if (!activationRequest.isReadyToProcess(now)) {
-
-                    return Optional.empty();
-                }
-
-                activationRequest.startProcessing(now, processingProperties.leaseDuration());
-
-                return Optional.of(activationRequestRepository.saveAndFlush(activationRequest));
-            });
+            return activationRequestRepository.saveAndFlush(activationRequest);
 
         } catch (ObjectOptimisticLockingFailureException objectOptimisticLockingFailureException) {
 
-            log.debug("Activation request {} was claimed by another instance", id);
+            log.info("Activation request {} was changed by another instance", activationRequest.getId());
 
-            return Optional.empty();
+            return null;
         }
-    }
-
-    private ActivationResultVO callProvider(ActivationRequest activationRequest) {
-
-        Timer.Sample sample = Timer.start(meterRegistry);
-
-        ActivationResultVO activationResultVO = activationProviderIntercommService.activate(activationRequest);
-
-        sample.stop(meterRegistry.timer(PROVIDER_CALLS_METRIC, OUTCOME_TAG, this.getOutcomeTag(activationResultVO)));
-
-        log.info("Provider returned {} for activation request {} on attempt {}", activationResultVO, activationRequest.getId(),
-                activationRequest.getAttempts());
-
-        return activationResultVO;
-    }
-
-    private void applyResult(ActivationRequest claimedActivationRequest, ActivationResultVO activationResultVO) {
-
-        try {
-
-            transactionTemplate.executeWithoutResult(transactionStatus -> {
-
-                ActivationRequest activationRequest = activationRequestRepository.findById(claimedActivationRequest.getId()).orElseThrow();
-
-                if (!ObjectUtil.isEquals(activationRequest.getVersion(), claimedActivationRequest.getVersion())) {
-
-                    log.warn("Result discarded: activation request {} was taken over by another instance", activationRequest.getId());
-                    return;
-                }
-
-                Instant now = clock.instant();
-
-                switch (activationResultVO) {
-                    case Success success -> activationRequest.complete(now);
-                    case PermanentFailure permanentFailure -> activationRequest.fail(permanentFailure.reason(), now);
-                    case TransientFailure transientFailure when this.isOutOfAttempts(activationRequest) ->
-                            activationRequest.fail(FailureReasonConstants.MAX_ATTEMPTS_PREFIX + transientFailure.reason(), now);
-                    case TransientFailure transientFailure -> activationRequest.scheduleRetry(transientFailure.reason(),
-                            now.plus(retryPolicyVO.calculateDelay(activationRequest.getAttempts(), transientFailure.retryAfter())), now);
-                }
-
-                activationRequestRepository.saveAndFlush(activationRequest);
-                this.countTransition(activationRequest);
-            });
-
-        } catch (ObjectOptimisticLockingFailureException objectOptimisticLockingFailureException) {
-
-            log.warn("Conflict while saving the result of activation request {}; it will be processed again", claimedActivationRequest.getId());
-        }
-    }
-
-    private Boolean isOutOfAttempts(ActivationRequest activationRequest) {
-
-        return IntegerUtil.greaterOrEqual(activationRequest.getAttempts(), processingProperties.maxAttempts());
-    }
-
-    private void countTransition(ActivationRequest activationRequest) {
-
-        meterRegistry.counter(TRANSITIONS_METRIC, STATUS_TAG, activationRequest.getStatus().name()).increment();
-    }
-
-    private String getOutcomeTag(ActivationResultVO activationResultVO) {
-
-        return switch (activationResultVO) {
-            case Success success -> "success";
-            case PermanentFailure permanentFailure -> "permanent_failure";
-            case TransientFailure transientFailure -> "transient_failure";
-        };
     }
 
 }

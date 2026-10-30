@@ -1,7 +1,5 @@
 package com.deroyque.activation.localdev;
 
-import com.deroyque.activation.util.ObjectUtil;
-import com.deroyque.activation.util.StringUtil;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,9 +34,9 @@ public class LocalDevSecurityConfig {
     @Bean
     public SecretKey localDevKey(LocalDevProperties localDevProperties) {
 
-        log.warn("Local-dev mode enabled: test token issuer and fake provider are active");
+        log.warn("Local-dev mode enabled: test token issuer is active");
 
-        if (StringUtil.isNullOrEmpty(localDevProperties.jwtSecret())) {
+        if (localDevProperties.jwtSecret() == null || localDevProperties.jwtSecret().isBlank()) {
 
             byte[] randomSecret = new byte[MIN_SECRET_BYTES];
             new SecureRandom().nextBytes(randomSecret);
@@ -63,7 +61,7 @@ public class LocalDevSecurityConfig {
         NimbusJwtDecoder nimbusJwtDecoder = NimbusJwtDecoder.withSecretKey(localDevKey).macAlgorithm(MacAlgorithm.HS256).build();
 
         JwtClaimValidator<List<String>> audienceValidator = new JwtClaimValidator<>(AUDIENCE_CLAIM,
-                audience -> ObjectUtil.isNotNull(audience) && audience.stream().anyMatch(audienceList::contains));
+                audience -> audience != null && audience.stream().anyMatch(audienceList::contains));
 
         nimbusJwtDecoder.setJwtValidator(new DelegatingOAuth2TokenValidator<Jwt>(JwtValidators.createDefaultWithIssuer(localDevProperties.issuer()),
                 audienceValidator));

@@ -26,10 +26,6 @@ public record ProcessingProperties(
 
         @NotNull
         @Positive
-        Integer batchSize,
-
-        @NotNull
-        @Positive
-        Integer concurrencyLimit) {
+        Integer batchSize) {
 
 }

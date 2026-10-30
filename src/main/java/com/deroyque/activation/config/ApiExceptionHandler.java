@@ -2,15 +2,12 @@ package com.deroyque.activation.config;
 
 import com.deroyque.activation.enumerator.ErrorEnum;
 import com.deroyque.activation.exception.BusinessServiceException;
-import com.deroyque.activation.util.ObjectUtil;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -25,42 +22,24 @@ import java.util.Map;
 
 @Slf4j
 @RestControllerAdvice
-@RequiredArgsConstructor
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
-
-    private static final String ERRORS_PROPERTY = "errors";
-    private static final String FIELD = "field";
-    private static final String MESSAGE = "message";
-    private static final String INVALID_VALUE_MESSAGE = "invalid value";
-
-    private final ProblemDetailFactory problemDetailFactory;
 
     @ExceptionHandler(BusinessServiceException.class)
     public ResponseEntity<Object> handleBusinessServiceException(BusinessServiceException businessServiceException,
             HttpServletRequest httpServletRequest) {
 
-        ProblemDetail problemDetail = problemDetailFactory.create(businessServiceException.getErrorEnum(), httpServletRequest.getRequestURI(),
+        ProblemDetail problemDetail = ProblemDetails.create(businessServiceException.getErrorEnum(), httpServletRequest.getRequestURI(),
                 businessServiceException.getArguments());
         businessServiceException.getProperties().forEach(problemDetail::setProperty);
 
         return ResponseEntity.status(problemDetail.getStatus()).body(problemDetail);
     }
 
-    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
-    public ResponseEntity<Object> handleConcurrentModification(ObjectOptimisticLockingFailureException objectOptimisticLockingFailureException,
-            HttpServletRequest httpServletRequest) {
-
-        log.warn("Concurrent modification on activation request {}", objectOptimisticLockingFailureException.getIdentifier());
-
-        return this.respond(ErrorEnum.CONCURRENT_MODIFICATION, httpServletRequest.getRequestURI(), null);
-    }
-
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Object> handleTypeMismatch(MethodArgumentTypeMismatchException methodArgumentTypeMismatchException,
             HttpServletRequest httpServletRequest) {
 
-        return this.respond(ErrorEnum.VALIDATION_ERROR, httpServletRequest.getRequestURI(),
-                List.of(this.createFieldError(methodArgumentTypeMismatchException.getName(), INVALID_VALUE_MESSAGE)));
+        return this.validationError(httpServletRequest.getRequestURI(), List.of(fieldError(methodArgumentTypeMismatchException.getName(), "invalid value")));
     }
 
     @ExceptionHandler(Exception.class)
@@ -68,7 +47,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
         log.error("Unexpected failure on {} {}", httpServletRequest.getMethod(), httpServletRequest.getRequestURI(), exception);
 
-        return this.respond(ErrorEnum.INTERNAL_ERROR, httpServletRequest.getRequestURI(), null);
+        return ResponseEntity.internalServerError().body(ProblemDetails.create(ErrorEnum.INTERNAL_ERROR, httpServletRequest.getRequestURI()));
     }
 
     @Override
@@ -76,10 +55,10 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             HttpHeaders httpHeaders, HttpStatusCode httpStatusCode, WebRequest webRequest) {
 
         List<Map<String, String>> fieldErrorList = methodArgumentNotValidException.getBindingResult().getFieldErrors().stream()
-                .map(fieldError -> this.createFieldError(fieldError.getField(), fieldError.getDefaultMessage()))
+                .map(fieldError -> fieldError(fieldError.getField(), fieldError.getDefaultMessage()))
                 .toList();
 
-        return this.respond(ErrorEnum.VALIDATION_ERROR, this.getPath(webRequest), fieldErrorList);
+        return this.validationError(getPath(webRequest), fieldErrorList);
     }
 
     @Override
@@ -88,11 +67,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
         List<Map<String, String>> fieldErrorList = handlerMethodValidationException.getParameterValidationResults().stream()
                 .flatMap(parameterValidationResult -> parameterValidationResult.getResolvableErrors().stream()
-                        .map(resolvableError -> this.createFieldError(parameterValidationResult.getMethodParameter().getParameterName(),
+                        .map(resolvableError -> fieldError(parameterValidationResult.getMethodParameter().getParameterName(),
                                 resolvableError.getDefaultMessage())))
                 .toList();
 
-        return this.respond(ErrorEnum.VALIDATION_ERROR, this.getPath(webRequest), fieldErrorList);
+        return this.validationError(getPath(webRequest), fieldErrorList);
     }
 
     @Override
@@ -101,30 +80,26 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
         if (body instanceof ProblemDetail problemDetail) {
 
-            problemDetailFactory.complete(problemDetail, this.getPath(webRequest));
+            ProblemDetails.complete(problemDetail, getPath(webRequest));
         }
 
         return super.handleExceptionInternal(exception, body, httpHeaders, httpStatusCode, webRequest);
     }
 
-    private ResponseEntity<Object> respond(ErrorEnum errorEnum, String path, List<Map<String, String>> fieldErrorList) {
+    private ResponseEntity<Object> validationError(String path, List<Map<String, String>> fieldErrorList) {
 
-        ProblemDetail problemDetail = problemDetailFactory.create(errorEnum, path);
+        ProblemDetail problemDetail = ProblemDetails.create(ErrorEnum.VALIDATION_ERROR, path);
+        problemDetail.setProperty("errors", fieldErrorList);
 
-        if (ObjectUtil.isNotNull(fieldErrorList)) {
-
-            problemDetail.setProperty(ERRORS_PROPERTY, fieldErrorList);
-        }
-
-        return ResponseEntity.status(errorEnum.getHttpStatus()).body(problemDetail);
+        return ResponseEntity.badRequest().body(problemDetail);
     }
 
-    private Map<String, String> createFieldError(String field, String message) {
+    private static Map<String, String> fieldError(String field, String message) {
 
-        return Map.of(FIELD, String.valueOf(field), MESSAGE, String.valueOf(message));
+        return Map.of("field", String.valueOf(field), "message", String.valueOf(message));
     }
 
-    private String getPath(WebRequest webRequest) {
+    private static String getPath(WebRequest webRequest) {
 
         return webRequest instanceof ServletWebRequest servletWebRequest ? servletWebRequest.getRequest().getRequestURI() : null;
     }

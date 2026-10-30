@@ -3,6 +3,7 @@ package com.deroyque.activation;
 import com.deroyque.activation.dto.ActivationRequestDTO;
 import com.deroyque.activation.dto.CreateActivationRequestDTO;
 import com.deroyque.activation.dto.PageDTO;
+import com.deroyque.activation.enumerator.ActivationStatusEnum;
 import com.deroyque.activation.repository.ActivationRequestRepository;
 import com.deroyque.activation.service.ActivationRequestService;
 import com.deroyque.activation.service.AuthenticatedSystemService;
@@ -96,7 +97,7 @@ class ActivationRequestPostgresIT {
         this.createAs("system-a", new CreateActivationRequestDTO("EXT-" + UUID.randomUUID(), "CUST-9", "INTERNET-500"));
         this.createAs("system-b", new CreateActivationRequestDTO("EXT-" + UUID.randomUUID(), "CUST-9", "INTERNET-500"));
 
-        assertThat(this.listAs("system-a", "PENDING", "CUST-9", 0, 20).content()).hasSize(1);
+        assertThat(this.listAs("system-a", ActivationStatusEnum.PENDING, "CUST-9", 0, 20).content()).hasSize(1);
         assertThat(this.listAs("system-a", null, null, 0, 20).content()).isNotEmpty();
     }
 
@@ -107,7 +108,7 @@ class ActivationRequestPostgresIT {
         return activationRequestService.create(createActivationRequestDTO);
     }
 
-    private PageDTO<ActivationRequestDTO> listAs(String sourceSystem, String status, String customerId, Integer page, Integer size) {
+    private PageDTO<ActivationRequestDTO> listAs(String sourceSystem, ActivationStatusEnum status, String customerId, Integer page, Integer size) {
 
         given(authenticatedSystemService.getSourceSystem()).willReturn(sourceSystem);
 

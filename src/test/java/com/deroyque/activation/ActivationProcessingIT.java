@@ -47,7 +47,7 @@ class ActivationProcessingIT {
     static void configureProperties(DynamicPropertyRegistry dynamicPropertyRegistry) {
 
         dynamicPropertyRegistry.add("intercomm.activation-provider.base-url", wireMockExtension::baseUrl);
-        dynamicPropertyRegistry.add("intercomm.activation-provider.read-timeout", () -> "500ms");
+        dynamicPropertyRegistry.add("intercomm.activation-provider.read-timeout", () -> "1s");
         dynamicPropertyRegistry.add("processing.job.enabled", () -> "true");
         dynamicPropertyRegistry.add("processing.job.interval", () -> "100ms");
         dynamicPropertyRegistry.add("processing.max-attempts", () -> "3");
@@ -116,7 +116,7 @@ class ActivationProcessingIT {
     void shouldRetryWithSameKeyAndCompleteWhenFirstCallTimesOut() {
 
         wireMockExtension.stubFor(post(PROVIDER_PATH).inScenario("slow-then-ok").whenScenarioStateIs(STARTED)
-                .willReturn(aResponse().withStatus(200).withFixedDelay(1500))
+                .willReturn(aResponse().withStatus(200).withFixedDelay(2500))
                 .willSetStateTo("recovered"));
         wireMockExtension.stubFor(post(PROVIDER_PATH).inScenario("slow-then-ok").whenScenarioStateIs("recovered")
                 .willReturn(aResponse().withStatus(200)));

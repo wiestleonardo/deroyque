@@ -5,6 +5,7 @@ import com.deroyque.activation.constants.RouteConstants;
 import com.deroyque.activation.dto.ActivationRequestDTO;
 import com.deroyque.activation.dto.CreateActivationRequestDTO;
 import com.deroyque.activation.dto.PageDTO;
+import com.deroyque.activation.enumerator.ActivationStatusEnum;
 import com.deroyque.activation.service.ActivationRequestService;
 import com.deroyque.activation.vo.CreationResultVO;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +49,7 @@ public class ActivationRequestControllerImpl implements ActivationRequestControl
 	}
 
 	@Override
-	public ResponseEntity<PageDTO<ActivationRequestDTO>> list(String status, String customerId, Integer page,
+	public ResponseEntity<PageDTO<ActivationRequestDTO>> list(ActivationStatusEnum status, String customerId, Integer page,
 			Integer size) {
 
 		return ResponseEntity.ok(activationRequestService.list(status, customerId, page, size));

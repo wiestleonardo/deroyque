@@ -5,6 +5,7 @@ import com.deroyque.activation.constants.ValidationConstants;
 import com.deroyque.activation.dto.ActivationRequestDTO;
 import com.deroyque.activation.dto.CreateActivationRequestDTO;
 import com.deroyque.activation.dto.PageDTO;
+import com.deroyque.activation.enumerator.ActivationStatusEnum;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -31,7 +32,7 @@ public interface ActivationRequestController {
 
 	@GetMapping
 	public abstract ResponseEntity<PageDTO<ActivationRequestDTO>> list(
-			@RequestParam(required = false) String status, @RequestParam(required = false) String customerId,
+			@RequestParam(required = false) ActivationStatusEnum status, @RequestParam(required = false) String customerId,
 			@RequestParam(defaultValue = "0") @Min(0) Integer page,
 			@RequestParam(defaultValue = "20") @Min(1) @Max(ValidationConstants.MAX_PAGE_SIZE) Integer size);
 

@@ -6,11 +6,10 @@ public final class FailureReasonConstants {
 
     }
 
-    public static final String PROVIDER_TIMEOUT = "PROVIDER_TIMEOUT";
-    public static final String PROVIDER_UNREACHABLE = "PROVIDER_UNREACHABLE";
+    public static final String TIMEOUT = "PROVIDER_TIMEOUT";
+    public static final String UNREACHABLE = "PROVIDER_UNREACHABLE";
     public static final String HTTP_ERROR_PREFIX = "PROVIDER_HTTP_";
     public static final String REJECTED_PREFIX = "PROVIDER_REJECTED_";
-    public static final String CREDENTIAL_PREFIX = "PROVIDER_AUTH_";
     public static final String MAX_ATTEMPTS_PREFIX = "MAX_ATTEMPTS_EXCEEDED:";
     public static final String LEASE_EXPIRED = "PROCESSING_LEASE_EXPIRED";
 

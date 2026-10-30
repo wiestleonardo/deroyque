@@ -2,37 +2,29 @@ package com.deroyque.activation.config;
 
 import com.deroyque.activation.constants.HeaderConstants;
 import com.deroyque.activation.intercomm.client.ActivationProviderClient;
-import com.deroyque.activation.util.StringUtil;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.support.RestClientAdapter;
 import org.springframework.web.service.invoker.HttpServiceProxyFactory;
-
-import java.net.http.HttpClient;
 
 @Configuration(proxyBeanMethods = false)
 public class HttpClientConfig {
 
     @Bean
-    public ActivationProviderClient activationProviderClient(RestClient.Builder restClientBuilder,
+    public ActivationProviderClient activationProviderClient(RestClient.Builder restClientBuilder, IntegrationErrorHandler integrationErrorHandler,
             ActivationProviderProperties activationProviderProperties) {
 
-        // HTTP/1.1 is forced because the JDK HttpClient h2c upgrade fails on servers that only speak HTTP/1.1.
-        HttpClient httpClient = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(activationProviderProperties.connectTimeout())
-                .build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(activationProviderProperties.connectTimeout());
+        requestFactory.setReadTimeout(activationProviderProperties.readTimeout());
 
-        JdkClientHttpRequestFactory jdkClientHttpRequestFactory = new JdkClientHttpRequestFactory(httpClient);
-        jdkClientHttpRequestFactory.setReadTimeout(activationProviderProperties.readTimeout());
-
-        RestClient.Builder builder = restClientBuilder.clone()
+        RestClient.Builder builder = integrationErrorHandler.apply(restClientBuilder.clone())
                 .baseUrl(activationProviderProperties.baseUrl())
-                .requestFactory(jdkClientHttpRequestFactory);
+                .requestFactory(requestFactory);
 
-        if (StringUtil.notEmpty(activationProviderProperties.apiKey())) {
+        if (activationProviderProperties.apiKey() != null && !activationProviderProperties.apiKey().isBlank()) {
 
             builder.defaultHeader(HeaderConstants.API_KEY, activationProviderProperties.apiKey());
         }

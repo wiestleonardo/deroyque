@@ -88,6 +88,21 @@ class SecurityIsolationIT {
     }
 
     @Test
+    void shouldReturnBadRequestWhenPageSizeIsAboveLimit() {
+
+        String token = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, localDevProperties.issuer(), Instant.now().plusSeconds(300));
+
+        assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("size", "101")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .hasStatus(HttpStatus.BAD_REQUEST)
+                .bodyJson().extractingPath("$.errors[0].field").isEqualTo("size");
+        assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("size", "100")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .hasStatusOk()
+                .bodyJson().extractingPath("$.size").isEqualTo(100);
+    }
+
+    @Test
     void shouldAcceptTokenWhenIssuedByLocalEndpoint() {
 
         MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.LocalDev.TOKEN).param("clientId", "system-c")
@@ -136,7 +151,7 @@ class SecurityIsolationIT {
 
         assertThat(mockMvcTester.get().uri("/actuator/health/liveness")).hasStatusOk();
         assertThat(mockMvcTester.get().uri("/actuator/health/readiness")).hasStatusOk();
-        assertThat(mockMvcTester.get().uri("/actuator/prometheus")).hasStatusOk().bodyText().contains("activation_requests{");
+        assertThat(mockMvcTester.get().uri("/actuator/prometheus")).hasStatusOk().bodyText().contains("http_server_requests");
     }
 
     private void assertUnauthorized(String token) {

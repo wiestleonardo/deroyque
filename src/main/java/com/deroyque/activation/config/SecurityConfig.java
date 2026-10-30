@@ -30,7 +30,7 @@ import java.io.IOException;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity, ObjectMapper objectMapper, ProblemDetailFactory problemDetailFactory,
+    public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity, ObjectMapper objectMapper,
             @Value("${local-dev.enabled:false}") Boolean localDevEnabled) throws Exception {
 
         BearerTokenAuthenticationEntryPoint bearerTokenAuthenticationEntryPoint = new BearerTokenAuthenticationEntryPoint();
@@ -47,8 +47,7 @@ public class SecurityConfig {
 
                     if (localDevEnabled) {
 
-                        authorizeHttpRequests.requestMatchers(RouteConstants.LocalDev.BASE + "/**", RouteConstants.ActivationProvider.BASE + "/**")
-                                .permitAll();
+                        authorizeHttpRequests.requestMatchers(RouteConstants.LocalDev.BASE + "/**").permitAll();
                     }
 
                     authorizeHttpRequests
@@ -62,20 +61,20 @@ public class SecurityConfig {
                         .authenticationEntryPoint((httpServletRequest, httpServletResponse, authenticationException) -> {
 
                             bearerTokenAuthenticationEntryPoint.commence(httpServletRequest, httpServletResponse, authenticationException);
-                            writeError(objectMapper, problemDetailFactory, httpServletRequest, httpServletResponse, ErrorEnum.UNAUTHORIZED);
+                            writeError(objectMapper, httpServletRequest, httpServletResponse, ErrorEnum.UNAUTHORIZED);
                         })
                         .accessDeniedHandler((httpServletRequest, httpServletResponse, accessDeniedException) -> {
 
                             bearerTokenAccessDeniedHandler.handle(httpServletRequest, httpServletResponse, accessDeniedException);
-                            writeError(objectMapper, problemDetailFactory, httpServletRequest, httpServletResponse, ErrorEnum.FORBIDDEN);
+                            writeError(objectMapper, httpServletRequest, httpServletResponse, ErrorEnum.FORBIDDEN);
                         }))
                 .build();
     }
 
-    public static void writeError(ObjectMapper objectMapper, ProblemDetailFactory problemDetailFactory, HttpServletRequest httpServletRequest,
-            HttpServletResponse httpServletResponse, ErrorEnum errorEnum) throws IOException {
+    private static void writeError(ObjectMapper objectMapper, HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse,
+            ErrorEnum errorEnum) throws IOException {
 
-        ProblemDetail problemDetail = problemDetailFactory.create(errorEnum, httpServletRequest.getRequestURI());
+        ProblemDetail problemDetail = ProblemDetails.create(errorEnum, httpServletRequest.getRequestURI());
 
         httpServletResponse.setStatus(errorEnum.getHttpStatus().value());
         httpServletResponse.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);

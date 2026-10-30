@@ -3,8 +3,6 @@ package com.deroyque.activation.repository.domain;
 import com.deroyque.activation.enumerator.ActivationStatusEnum;
 import com.deroyque.activation.enumerator.ErrorEnum;
 import com.deroyque.activation.exception.BusinessServiceException;
-import com.deroyque.activation.util.IntegerUtil;
-import com.deroyque.activation.util.ObjectUtil;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,6 +18,7 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 @Getter
@@ -86,7 +85,7 @@ public class ActivationRequest implements Serializable {
         activationRequest.productCode = productCode;
         activationRequest.correlationId = correlationId;
         activationRequest.status = ActivationStatusEnum.PENDING;
-        activationRequest.attempts = IntegerUtil.ZERO;
+        activationRequest.attempts = 0;
         activationRequest.nextAttemptAt = now;
         activationRequest.createdAt = now;
         activationRequest.updatedAt = now;
@@ -97,7 +96,7 @@ public class ActivationRequest implements Serializable {
     public void startProcessing(Instant now, Duration leaseDuration) {
 
         this.transitionTo(ActivationStatusEnum.PROCESSING, now);
-        this.attempts = IntegerUtil.sum(this.attempts, IntegerUtil.ONE);
+        this.attempts++;
         this.nextAttemptAt = now.plus(leaseDuration);
     }
 
@@ -120,16 +119,6 @@ public class ActivationRequest implements Serializable {
         this.nextAttemptAt = nextAttemptAt;
     }
 
-    public void releaseExpiredLease(String failureReason, Instant now) {
-
-        if (!this.isLeaseExpired(now)) {
-
-            throw new BusinessServiceException(ErrorEnum.INVALID_STATUS_TRANSITION, this.status, ActivationStatusEnum.PENDING);
-        }
-
-        this.scheduleRetry(failureReason, now, now);
-    }
-
     public Boolean isLeaseExpired(Instant now) {
 
         return this.status == ActivationStatusEnum.PROCESSING && !this.nextAttemptAt.isAfter(now);
@@ -142,7 +131,7 @@ public class ActivationRequest implements Serializable {
 
     public Boolean hasSameContent(String customerId, String productCode) {
 
-        return ObjectUtil.isEquals(this.customerId, customerId) && ObjectUtil.isEquals(this.productCode, productCode);
+        return Objects.equals(this.customerId, customerId) && Objects.equals(this.productCode, productCode);
     }
 
     private void transitionTo(ActivationStatusEnum targetStatus, Instant now) {
@@ -158,7 +147,7 @@ public class ActivationRequest implements Serializable {
 
     private static String truncate(String failureReason) {
 
-        if (ObjectUtil.isNull(failureReason) || failureReason.length() <= MAX_FAILURE_REASON_LENGTH) {
+        if (failureReason == null || failureReason.length() <= MAX_FAILURE_REASON_LENGTH) {
 
             return failureReason;
         }
