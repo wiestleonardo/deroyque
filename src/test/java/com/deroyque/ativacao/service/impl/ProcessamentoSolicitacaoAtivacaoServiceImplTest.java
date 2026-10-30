@@ -11,15 +11,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Limit;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -129,6 +133,22 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
 
         assertThat(this.solicitacaoAtivacao.getSituacao()).isEqualTo(SituacaoSolicitacaoAtivacaoEnum.COMPLETED);
         assertThat(this.solicitacaoAtivacao.getQuantidadeTentativa()).isEqualTo(2);
+    }
+
+    @Test
+    void deveProcessarRestoDoLoteQuandoUmItemFalharSemPrevisao() {
+
+        SolicitacaoAtivacao solicitacaoAtivacaoComErro = SolicitacaoAtivacao.criar("system-a", "EXT-2", "CUST-2", "INTERNET-500", "corr",
+                AGORA.minusSeconds(60));
+        given(solicitacaoAtivacaoRepository.listarProntoParaProcessar(anyList(), eq(AGORA), any(Limit.class)))
+                .willReturn(List.of(solicitacaoAtivacaoComErro, this.solicitacaoAtivacao));
+        given(solicitacaoAtivacaoRepository.saveAndFlush(any(SolicitacaoAtivacao.class))).willAnswer(invocacao -> invocacao.getArgument(0));
+        willThrow(new IllegalStateException("erro inesperado")).given(provedorAtivacaoIntercommService).ativar(solicitacaoAtivacaoComErro);
+
+        this.processamentoSolicitacaoAtivacaoServiceImpl.processarPendentes();
+
+        assertThat(this.solicitacaoAtivacao.getSituacao()).isEqualTo(SituacaoSolicitacaoAtivacaoEnum.COMPLETED);
+        assertThat(solicitacaoAtivacaoComErro.getSituacao()).isEqualTo(SituacaoSolicitacaoAtivacaoEnum.PROCESSING);
     }
 
     private void prepararGravacao() {

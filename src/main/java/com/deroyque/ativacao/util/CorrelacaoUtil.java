@@ -3,6 +3,7 @@ package com.deroyque.ativacao.util;
 import org.slf4j.MDC;
 
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 public final class CorrelacaoUtil {
 
@@ -12,11 +13,12 @@ public final class CorrelacaoUtil {
 
     public static final String CHAVE_MDC = "correlationId";
 
-    private static final String FORMATO_VALIDO = "[A-Za-z0-9-]{1,64}";
+    // Compilada uma vez; String.matches compilaria a regex a cada requisição.
+    private static final Pattern FORMATO_VALIDO = Pattern.compile("[A-Za-z0-9-]{1,64}");
 
     public static String validarOuGerar(String codigoCorrelacao) {
 
-        if (codigoCorrelacao != null && codigoCorrelacao.matches(FORMATO_VALIDO)) {
+        if (codigoCorrelacao != null && FORMATO_VALIDO.matcher(codigoCorrelacao).matches()) {
 
             return codigoCorrelacao;
         }

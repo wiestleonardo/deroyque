@@ -36,7 +36,7 @@ services:
       DB_PASSWORD: activation
       PROVIDER_BASE_URL: http://provider-mock:8089
       PROVIDER_API_KEY: local-provider-key
-      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError
     ports:
       - "8080:8080"
     deploy:

@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 
 /**
@@ -40,7 +41,7 @@ public class IntegracaoErrorHandler {
 
                         return clientHttpResponse;
 
-                    } catch (SocketTimeoutException socketTimeoutException) {
+                    } catch (HttpTimeoutException | SocketTimeoutException timeoutException) {
 
                         throw new IntegracaoException(MotivoFalhaConstants.TEMPO_LIMITE, true, null);
 

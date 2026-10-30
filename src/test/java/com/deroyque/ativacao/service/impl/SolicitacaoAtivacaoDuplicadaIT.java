@@ -59,6 +59,8 @@ class SolicitacaoAtivacaoDuplicadaIT {
         assertThat(primeiraCriacao.criada()).isTrue();
         assertThat(retry.criada()).isFalse();
         assertThat(retry.solicitacaoAtivacaoDTO().id()).isEqualTo(primeiraCriacao.solicitacaoAtivacaoDTO().id());
+        // O 201 e o 200 precisam mostrar a mesma data: o que sai na criação é o que o banco guardou.
+        assertThat(retry.solicitacaoAtivacaoDTO().createdAt()).isEqualTo(primeiraCriacao.solicitacaoAtivacaoDTO().createdAt());
         assertThat(solicitacaoAtivacaoRepository.count()).isEqualTo(1);
     }
 

@@ -19,6 +19,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
@@ -40,20 +42,15 @@ public class ProcessamentoSolicitacaoAtivacaoServiceImpl implements Processament
     @Override
     public void processarPendentes() {
 
-        // Uma consulta traz o lote inteiro; o loop só existe porque cada solicitação é uma chamada ao provedor.
+        // Uma consulta traz o lote inteiro.
         List<SolicitacaoAtivacao> listaSolicitacaoAtivacao = solicitacaoAtivacaoRepository.listarProntoParaProcessar(LISTA_SITUACAO_PROCESSAVEL,
                 clock.instant(), Limit.of(processamentoProperties.tamanhoLote()));
 
-        for (SolicitacaoAtivacao solicitacaoAtivacao : listaSolicitacaoAtivacao) {
+        // Cada solicitação do lote chama o provedor em paralelo, numa thread virtual; o lote dura o tempo da chamada mais lenta,
+        // não a soma de todas. O close do executor espera todas terminarem antes da próxima execução do job.
+        try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
 
-            try {
-
-                this.processar(solicitacaoAtivacao);
-
-            } catch (RuntimeException runtimeException) {
-
-                log.error("Falha não prevista ao processar a solicitação {}", solicitacaoAtivacao.getIdSolicitacaoAtivacao(), runtimeException);
-            }
+            listaSolicitacaoAtivacao.forEach(solicitacaoAtivacao -> executorService.execute(() -> this.processarSemInterromperLote(solicitacaoAtivacao)));
         }
     }
 
@@ -77,6 +74,18 @@ public class ProcessamentoSolicitacaoAtivacaoServiceImpl implements Processament
         } finally {
 
             CorrelacaoUtil.limpar();
+        }
+    }
+
+    private void processarSemInterromperLote(SolicitacaoAtivacao solicitacaoAtivacao) {
+
+        try {
+
+            this.processar(solicitacaoAtivacao);
+
+        } catch (RuntimeException runtimeException) {
+
+            log.error("Falha não prevista ao processar a solicitação {}", solicitacaoAtivacao.getIdSolicitacaoAtivacao(), runtimeException);
         }
     }
 

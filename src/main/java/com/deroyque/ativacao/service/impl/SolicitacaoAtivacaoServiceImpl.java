@@ -31,7 +31,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SolicitacaoAtivacaoServiceImpl implements SolicitacaoAtivacaoService {
 
-    private static final Sort MAIS_RECENTES_PRIMEIRO = Sort.by(Sort.Direction.DESC, "dataCadastro");
+    // O id desempata solicitações criadas no mesmo milissegundo; sem ele um item pode repetir ou sumir entre páginas.
+    private static final Sort MAIS_RECENTES_PRIMEIRO = Sort.by(Sort.Direction.DESC, "dataCadastro", "idSolicitacaoAtivacao");
 
     private final SolicitacaoAtivacaoRepository solicitacaoAtivacaoRepository;
 
