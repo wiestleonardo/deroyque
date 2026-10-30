@@ -52,7 +52,7 @@ public class ProblemDetailFactory {
 
     private String getMessage(String key, Object... arguments) {
 
-        return this.messageSource.getMessage(key, arguments, Locale.ENGLISH);
+        return messageSource.getMessage(key, arguments, Locale.ENGLISH);
     }
 
 }

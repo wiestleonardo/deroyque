@@ -60,8 +60,8 @@ class ActivationProcessingServiceImplTest {
 
         RetryPolicyVO retryPolicyVO = new RetryPolicyVO(Duration.ofSeconds(10), Duration.ofMinutes(5), new Random(1));
 
-        this.activationProcessingServiceImpl = new ActivationProcessingServiceImpl(this.activationRequestRepository,
-                this.activationProviderIntercommService, retryPolicyVO, PROCESSING_PROPERTIES, new TransactionTemplate(this.platformTransactionManager),
+        this.activationProcessingServiceImpl = new ActivationProcessingServiceImpl(activationRequestRepository,
+                activationProviderIntercommService, retryPolicyVO, PROCESSING_PROPERTIES, new TransactionTemplate(platformTransactionManager),
                 Clock.fixed(NOW, ZoneOffset.UTC), this.simpleMeterRegistry);
 
         this.activationRequest = ActivationRequest.create("system-a", "EXT-1", "CUST-1", "INTERNET-500", "corr", NOW.minusSeconds(60));
@@ -71,7 +71,7 @@ class ActivationProcessingServiceImplTest {
     void shouldCompleteWhenProviderActivates() {
 
         this.stubFindAndSave();
-        given(this.activationProviderIntercommService.activate(this.activationRequest)).willReturn(new Success());
+        given(activationProviderIntercommService.activate(this.activationRequest)).willReturn(new Success());
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
@@ -84,7 +84,7 @@ class ActivationProcessingServiceImplTest {
     void shouldFailWithoutRetryWhenProviderRejects() {
 
         this.stubFindAndSave();
-        given(this.activationProviderIntercommService.activate(this.activationRequest)).willReturn(new PermanentFailure("PROVIDER_REJECTED_400"));
+        given(activationProviderIntercommService.activate(this.activationRequest)).willReturn(new PermanentFailure("PROVIDER_REJECTED_400"));
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
@@ -96,7 +96,7 @@ class ActivationProcessingServiceImplTest {
     void shouldScheduleRetryWithBackoffWhenFailureIsTransient() {
 
         this.stubFindAndSave();
-        given(this.activationProviderIntercommService.activate(this.activationRequest)).willReturn(new TransientFailure("PROVIDER_HTTP_500"));
+        given(activationProviderIntercommService.activate(this.activationRequest)).willReturn(new TransientFailure("PROVIDER_HTTP_500"));
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
@@ -109,7 +109,7 @@ class ActivationProcessingServiceImplTest {
     void shouldHonorRetryAfterWhenProviderAsksToWait() {
 
         this.stubFindAndSave();
-        given(this.activationProviderIntercommService.activate(this.activationRequest))
+        given(activationProviderIntercommService.activate(this.activationRequest))
                 .willReturn(new TransientFailure("PROVIDER_HTTP_429", Duration.ofSeconds(42)));
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
@@ -122,7 +122,7 @@ class ActivationProcessingServiceImplTest {
 
         this.useAttemptsUntilLast();
         this.stubFindAndSave();
-        given(this.activationProviderIntercommService.activate(this.activationRequest)).willReturn(new TransientFailure("PROVIDER_TIMEOUT"));
+        given(activationProviderIntercommService.activate(this.activationRequest)).willReturn(new TransientFailure("PROVIDER_TIMEOUT"));
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
@@ -140,7 +140,7 @@ class ActivationProcessingServiceImplTest {
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
-        then(this.activationProviderIntercommService).shouldHaveNoInteractions();
+        then(activationProviderIntercommService).shouldHaveNoInteractions();
         assertThat(this.activationRequest.getStatus()).isEqualTo(ActivationStatusEnum.PENDING);
     }
 
@@ -153,19 +153,19 @@ class ActivationProcessingServiceImplTest {
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
-        then(this.activationProviderIntercommService).shouldHaveNoInteractions();
+        then(activationProviderIntercommService).shouldHaveNoInteractions();
     }
 
     @Test
     void shouldSkipWhenAnotherInstanceClaimsFirst() {
 
         this.stubFind();
-        given(this.activationRequestRepository.saveAndFlush(this.activationRequest))
+        given(activationRequestRepository.saveAndFlush(this.activationRequest))
                 .willThrow(new ObjectOptimisticLockingFailureException(ActivationRequest.class, this.activationRequest.getId()));
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
-        then(this.activationProviderIntercommService).shouldHaveNoInteractions();
+        then(activationProviderIntercommService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -173,7 +173,7 @@ class ActivationProcessingServiceImplTest {
 
         this.activationRequest.startProcessing(NOW.minusSeconds(60), Duration.ofSeconds(30));
         this.stubFindAndSave();
-        given(this.activationProviderIntercommService.activate(this.activationRequest)).willReturn(new Success());
+        given(activationProviderIntercommService.activate(this.activationRequest)).willReturn(new Success());
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
@@ -190,20 +190,20 @@ class ActivationProcessingServiceImplTest {
 
         this.activationProcessingServiceImpl.process(this.activationRequest.getId());
 
-        then(this.activationProviderIntercommService).should(never()).activate(any(ActivationRequest.class));
+        then(activationProviderIntercommService).should(never()).activate(any(ActivationRequest.class));
         assertThat(this.activationRequest.getStatus()).isEqualTo(ActivationStatusEnum.FAILED);
         assertThat(this.activationRequest.getFailureReason()).isEqualTo("MAX_ATTEMPTS_EXCEEDED:PROCESSING_LEASE_EXPIRED");
     }
 
     private void stubFind() {
 
-        given(this.activationRequestRepository.findById(this.activationRequest.getId())).willReturn(Optional.of(this.activationRequest));
+        given(activationRequestRepository.findById(this.activationRequest.getId())).willReturn(Optional.of(this.activationRequest));
     }
 
     private void stubFindAndSave() {
 
         this.stubFind();
-        given(this.activationRequestRepository.saveAndFlush(this.activationRequest)).willReturn(this.activationRequest);
+        given(activationRequestRepository.saveAndFlush(this.activationRequest)).willReturn(this.activationRequest);
     }
 
     private void useAttemptsUntilLast() {

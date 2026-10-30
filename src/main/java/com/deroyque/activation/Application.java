@@ -8,11 +8,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @SpringBootApplication
 @ConfigurationPropertiesScan
-public class ActivationApplication {
+public class Application {
 
     public static void main(String[] args) {
 
-        SpringApplication.run(ActivationApplication.class, args);
+        SpringApplication.run(Application.class, args);
     }
 
 }

@@ -1,8 +1,11 @@
 package com.deroyque.activation;
 
+import com.deroyque.activation.dto.ActivationRequestDTO;
 import com.deroyque.activation.dto.CreateActivationRequestDTO;
+import com.deroyque.activation.dto.PageDTO;
 import com.deroyque.activation.repository.ActivationRequestRepository;
 import com.deroyque.activation.service.ActivationRequestService;
+import com.deroyque.activation.service.AuthenticatedSystemService;
 import com.deroyque.activation.vo.CreationResultVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -46,10 +50,14 @@ class ActivationRequestPostgresIT {
     @MockitoBean
     private JwtDecoder jwtDecoder;
 
+    @MockitoBean
+    private AuthenticatedSystemService authenticatedSystemService;
+
     @Test
     void shouldCreateOnlyOneRecordWhenIdenticalRequestsArriveTogetherOnPostgres() throws Exception {
 
         String externalId = "EXT-" + UUID.randomUUID();
+        given(authenticatedSystemService.getSourceSystem()).willReturn("system-a");
         CountDownLatch startSignal = new CountDownLatch(1);
         List<Future<CreationResultVO>> futureList = new ArrayList<>();
 
@@ -61,7 +69,7 @@ class ActivationRequestPostgresIT {
 
                     startSignal.await();
 
-                    return this.activationRequestService.create("system-a", "corr", new CreateActivationRequestDTO(externalId, "CUST-1", "INTERNET-500"));
+                    return activationRequestService.create(new CreateActivationRequestDTO(externalId, "CUST-1", "INTERNET-500"));
                 }));
             }
 
@@ -77,7 +85,7 @@ class ActivationRequestPostgresIT {
             assertThat(resultList).filteredOn(CreationResultVO::created).hasSize(1);
             assertThat(resultList).extracting(result -> result.activationRequestDTO().id())
                     .containsOnly(resultList.getFirst().activationRequestDTO().id());
-            assertThat(this.activationRequestRepository.findAll()).filteredOn(activationRequest -> activationRequest.getExternalId().equals(externalId))
+            assertThat(activationRequestRepository.findAll()).filteredOn(activationRequest -> activationRequest.getExternalId().equals(externalId))
                     .hasSize(1);
         }
     }
@@ -85,11 +93,25 @@ class ActivationRequestPostgresIT {
     @Test
     void shouldListOnlyRequestsOfTheSystemWhenFilteringByStatusOnPostgres() {
 
-        this.activationRequestService.create("system-a", "corr", new CreateActivationRequestDTO("EXT-" + UUID.randomUUID(), "CUST-9", "INTERNET-500"));
-        this.activationRequestService.create("system-b", "corr", new CreateActivationRequestDTO("EXT-" + UUID.randomUUID(), "CUST-9", "INTERNET-500"));
+        this.createAs("system-a", new CreateActivationRequestDTO("EXT-" + UUID.randomUUID(), "CUST-9", "INTERNET-500"));
+        this.createAs("system-b", new CreateActivationRequestDTO("EXT-" + UUID.randomUUID(), "CUST-9", "INTERNET-500"));
 
-        assertThat(this.activationRequestService.list("system-a", "PENDING", "CUST-9", 0, 20).content()).hasSize(1);
-        assertThat(this.activationRequestService.list("system-a", null, null, 0, 20).content()).isNotEmpty();
+        assertThat(this.listAs("system-a", "PENDING", "CUST-9", 0, 20).content()).hasSize(1);
+        assertThat(this.listAs("system-a", null, null, 0, 20).content()).isNotEmpty();
+    }
+
+    private CreationResultVO createAs(String sourceSystem, CreateActivationRequestDTO createActivationRequestDTO) {
+
+        given(authenticatedSystemService.getSourceSystem()).willReturn(sourceSystem);
+
+        return activationRequestService.create(createActivationRequestDTO);
+    }
+
+    private PageDTO<ActivationRequestDTO> listAs(String sourceSystem, String status, String customerId, Integer page, Integer size) {
+
+        given(authenticatedSystemService.getSourceSystem()).willReturn(sourceSystem);
+
+        return activationRequestService.list(status, customerId, page, size);
     }
 
 }

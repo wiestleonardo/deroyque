@@ -49,10 +49,10 @@ class SecurityIsolationIT {
     @Test
     void shouldHideRequestWhenAnotherSystemQueriesIt() {
 
-        String systemAToken = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, this.localDevProperties.issuer(), Instant.now().plusSeconds(300));
-        String systemBToken = this.generateToken("system-b", FULL_SCOPE, AUDIENCE, this.localDevProperties.issuer(), Instant.now().plusSeconds(300));
+        String systemAToken = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, localDevProperties.issuer(), Instant.now().plusSeconds(300));
+        String systemBToken = this.generateToken("system-b", FULL_SCOPE, AUDIENCE, localDevProperties.issuer(), Instant.now().plusSeconds(300));
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE)
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + systemAToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -62,15 +62,15 @@ class SecurityIsolationIT {
         assertThat(mvcTestResult).hasStatus(HttpStatus.CREATED);
         String requestId = JsonPath.read(new String(mvcTestResult.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8), "$.id");
 
-        assertThat(this.mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).header(HttpHeaders.AUTHORIZATION, "Bearer " + systemAToken))
+        assertThat(mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).header(HttpHeaders.AUTHORIZATION, "Bearer " + systemAToken))
                 .hasStatusOk();
-        assertThat(this.mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).header(HttpHeaders.AUTHORIZATION, "Bearer " + systemBToken))
+        assertThat(mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).header(HttpHeaders.AUTHORIZATION, "Bearer " + systemBToken))
                 .hasStatus(HttpStatus.NOT_FOUND);
-        assertThat(this.mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("customerId", "CUST-ISOLATED").param("status", "PENDING")
+        assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("customerId", "CUST-ISOLATED").param("status", "PENDING")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + systemAToken))
                 .hasStatusOk()
                 .bodyJson().extractingPath("$.content[*].id").asArray().containsExactly(requestId);
-        assertThat(this.mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("customerId", "CUST-ISOLATED")
+        assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("customerId", "CUST-ISOLATED")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + systemBToken))
                 .hasStatusOk()
                 .bodyJson().extractingPath("$.content").asArray().isEmpty();
@@ -79,9 +79,9 @@ class SecurityIsolationIT {
     @Test
     void shouldReturnBadRequestWhenStatusFilterDoesNotExist() {
 
-        String token = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, this.localDevProperties.issuer(), Instant.now().plusSeconds(300));
+        String token = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, localDevProperties.issuer(), Instant.now().plusSeconds(300));
 
-        assertThat(this.mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("status", "DONE")
+        assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("status", "DONE")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .hasStatus(HttpStatus.BAD_REQUEST)
                 .hasContentType(MediaType.APPLICATION_PROBLEM_JSON);
@@ -90,19 +90,19 @@ class SecurityIsolationIT {
     @Test
     void shouldAcceptTokenWhenIssuedByLocalEndpoint() {
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.LocalDev.TOKEN).param("clientId", "system-c")
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.LocalDev.TOKEN).param("clientId", "system-c")
                 .param("scope", "activation:read").exchange();
         assertThat(mvcTestResult).hasStatusOk();
         String token = JsonPath.read(new String(mvcTestResult.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8), "$.access_token");
 
-        assertThat(this.mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .hasStatusOk();
     }
 
     @Test
     void shouldRejectWhenAudienceIsDifferent() {
 
-        String token = this.generateToken("system-a", FULL_SCOPE, "other-service", this.localDevProperties.issuer(), Instant.now().plusSeconds(300));
+        String token = this.generateToken("system-a", FULL_SCOPE, "other-service", localDevProperties.issuer(), Instant.now().plusSeconds(300));
 
         this.assertUnauthorized(token);
     }
@@ -118,7 +118,7 @@ class SecurityIsolationIT {
     @Test
     void shouldRejectWhenTokenIsExpired() {
 
-        String token = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, this.localDevProperties.issuer(), Instant.now().minusSeconds(600));
+        String token = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, localDevProperties.issuer(), Instant.now().minusSeconds(600));
 
         this.assertUnauthorized(token);
     }
@@ -126,7 +126,7 @@ class SecurityIsolationIT {
     @Test
     void shouldRejectWhenSignatureIsTampered() {
 
-        String token = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, this.localDevProperties.issuer(), Instant.now().plusSeconds(300));
+        String token = this.generateToken("system-a", FULL_SCOPE, AUDIENCE, localDevProperties.issuer(), Instant.now().plusSeconds(300));
 
         this.assertUnauthorized(token.substring(0, token.length() - 4) + "AAAA");
     }
@@ -134,14 +134,14 @@ class SecurityIsolationIT {
     @Test
     void shouldExposeHealthAndMetricsWithoutTokenWhenEndpointIsActuator() {
 
-        assertThat(this.mockMvcTester.get().uri("/actuator/health/liveness")).hasStatusOk();
-        assertThat(this.mockMvcTester.get().uri("/actuator/health/readiness")).hasStatusOk();
-        assertThat(this.mockMvcTester.get().uri("/actuator/prometheus")).hasStatusOk().bodyText().contains("activation_requests{");
+        assertThat(mockMvcTester.get().uri("/actuator/health/liveness")).hasStatusOk();
+        assertThat(mockMvcTester.get().uri("/actuator/health/readiness")).hasStatusOk();
+        assertThat(mockMvcTester.get().uri("/actuator/prometheus")).hasStatusOk().bodyText().contains("activation_requests{");
     }
 
     private void assertUnauthorized(String token) {
 
-        assertThat(this.mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+        assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .hasStatus(HttpStatus.UNAUTHORIZED)
                 .hasContentType(MediaType.APPLICATION_PROBLEM_JSON);
     }
@@ -158,7 +158,7 @@ class SecurityIsolationIT {
                 .claim("scope", scope)
                 .build();
 
-        return this.jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), jwtClaimsSet)).getTokenValue();
+        return jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), jwtClaimsSet)).getTokenValue();
     }
 
 }

@@ -53,7 +53,7 @@ public class ActivationProviderIntercommServiceImpl implements ActivationProvide
 
         try {
 
-            ResponseEntity<Void> responseEntity = this.activationProviderClient.activate(activationRequest.getId().toString(),
+            ResponseEntity<Void> responseEntity = activationProviderClient.activate(activationRequest.getId().toString(),
                     CorrelationUtil.getCurrent(), apiProviderActivationDTO);
 
             return this.classify(responseEntity.getStatusCode(), responseEntity.getHeaders());
@@ -124,7 +124,7 @@ public class ActivationProviderIntercommServiceImpl implements ActivationProvide
         try {
 
             Instant retryAfterDate = ZonedDateTime.parse(retryAfter.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
-            Duration delay = Duration.between(this.clock.instant(), retryAfterDate);
+            Duration delay = Duration.between(clock.instant(), retryAfterDate);
 
             return delay.isNegative() ? Duration.ZERO : delay;
 

@@ -16,7 +16,7 @@ public class ActivationProcessingJob {
     @Scheduled(fixedDelayString = "${processing.job.interval}")
     public void execute() {
 
-        this.activationProcessingService.processPending();
+        activationProcessingService.processPending();
     }
 
 }

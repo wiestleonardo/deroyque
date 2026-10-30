@@ -39,7 +39,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Object> handleBusinessServiceException(BusinessServiceException businessServiceException,
             HttpServletRequest httpServletRequest) {
 
-        ProblemDetail problemDetail = this.problemDetailFactory.create(businessServiceException.getErrorEnum(), httpServletRequest.getRequestURI(),
+        ProblemDetail problemDetail = problemDetailFactory.create(businessServiceException.getErrorEnum(), httpServletRequest.getRequestURI(),
                 businessServiceException.getArguments());
         businessServiceException.getProperties().forEach(problemDetail::setProperty);
 
@@ -101,7 +101,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
         if (body instanceof ProblemDetail problemDetail) {
 
-            this.problemDetailFactory.complete(problemDetail, this.getPath(webRequest));
+            problemDetailFactory.complete(problemDetail, this.getPath(webRequest));
         }
 
         return super.handleExceptionInternal(exception, body, httpHeaders, httpStatusCode, webRequest);
@@ -109,7 +109,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private ResponseEntity<Object> respond(ErrorEnum errorEnum, String path, List<Map<String, String>> fieldErrorList) {
 
-        ProblemDetail problemDetail = this.problemDetailFactory.create(errorEnum, path);
+        ProblemDetail problemDetail = problemDetailFactory.create(errorEnum, path);
 
         if (ObjectUtil.isNotNull(fieldErrorList)) {
 

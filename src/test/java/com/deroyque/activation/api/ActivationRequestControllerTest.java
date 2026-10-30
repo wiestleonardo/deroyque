@@ -31,8 +31,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
@@ -60,10 +58,10 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnCreatedWithLocationWhenRequestIsCreated() {
 
-        given(this.activationRequestService.create(eq(TestTokens.SOURCE_SYSTEM), anyString(), eq(CREATE_ACTIVATION_REQUEST_DTO)))
+        given(activationRequestService.create(CREATE_ACTIVATION_REQUEST_DTO))
                 .willReturn(new CreationResultVO(pendingActivationRequest(), Boolean.TRUE));
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
                 .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY).exchange();
 
         assertThat(mvcTestResult).hasStatus(HttpStatus.CREATED);
@@ -78,10 +76,10 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnOkWithoutLocationWhenRetryHasSameContent() {
 
-        given(this.activationRequestService.create(eq(TestTokens.SOURCE_SYSTEM), anyString(), eq(CREATE_ACTIVATION_REQUEST_DTO)))
+        given(activationRequestService.create(CREATE_ACTIVATION_REQUEST_DTO))
                 .willReturn(new CreationResultVO(pendingActivationRequest(), Boolean.FALSE));
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
                 .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY).exchange();
 
         assertThat(mvcTestResult).hasStatusOk();
@@ -93,10 +91,10 @@ class ActivationRequestControllerTest {
     void shouldReturnConflictWhenExternalIdIsReusedWithDifferentContent() {
 
         UUID existingId = UUID.randomUUID();
-        given(this.activationRequestService.create(eq(TestTokens.SOURCE_SYSTEM), anyString(), eq(CREATE_ACTIVATION_REQUEST_DTO)))
+        given(activationRequestService.create(CREATE_ACTIVATION_REQUEST_DTO))
                 .willThrow(new BusinessServiceException(ErrorEnum.DUPLICATE_REQUEST, Map.of("existingRequestId", existingId), "EXT-12345"));
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
                 .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY).exchange();
 
         assertThat(mvcTestResult).hasStatus(HttpStatus.CONFLICT).hasContentType(MediaType.APPLICATION_PROBLEM_JSON);
@@ -108,7 +106,7 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnBadRequestWithFieldsWhenBodyIsInvalid() {
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
                 .header("X-Correlation-Id", "abc123")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -122,13 +120,13 @@ class ActivationRequestControllerTest {
         assertThat(mvcTestResult).bodyJson().extractingPath("$.traceId").isEqualTo("abc123");
         assertThat(mvcTestResult).bodyJson().extractingPath("$.errors[*].field").asArray().contains("customerId", "externalId", "productCode");
         assertThat(mvcTestResult).bodyJson().extractingPath("$.errors[?(@.field == 'customerId')].message").asArray().containsExactly("is required");
-        then(this.activationRequestService).shouldHaveNoInteractions();
+        then(activationRequestService).shouldHaveNoInteractions();
     }
 
     @Test
     void shouldReturnBadRequestWithoutInternalDetailsWhenJsonIsMalformed() {
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
                 .contentType(MediaType.APPLICATION_JSON).content("{not-json").exchange();
 
         assertThat(mvcTestResult).hasStatus(HttpStatus.BAD_REQUEST);
@@ -140,7 +138,7 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnPayloadTooLargeWhenBodyExceedsLimit() {
 
-        assertThat(this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
+        assertThat(mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
                 .contentType(MediaType.APPLICATION_JSON).content("x".repeat(17 * 1024)))
                 .hasStatus(HttpStatus.PAYLOAD_TOO_LARGE);
     }
@@ -148,10 +146,10 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnInternalErrorWithoutDetailsWhenUnexpectedFailureHappens() {
 
-        given(this.activationRequestService.create(eq(TestTokens.SOURCE_SYSTEM), anyString(), eq(CREATE_ACTIVATION_REQUEST_DTO)))
+        given(activationRequestService.create(CREATE_ACTIVATION_REQUEST_DTO))
                 .willThrow(new IllegalStateException("db password=secret"));
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
                 .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY).exchange();
 
         assertThat(mvcTestResult).hasStatus(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -162,9 +160,9 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnRequestWhenItExists() {
 
-        given(this.activationRequestService.get(TestTokens.SOURCE_SYSTEM, REQUEST_ID)).willReturn(pendingActivationRequest());
+        given(activationRequestService.get(REQUEST_ID)).willReturn(pendingActivationRequest());
 
-        assertThat(this.mockMvcTester.get().uri(GET_BY_ID_PATH, REQUEST_ID).with(TestTokens.reader()))
+        assertThat(mockMvcTester.get().uri(GET_BY_ID_PATH, REQUEST_ID).with(TestTokens.reader()))
                 .hasStatusOk()
                 .bodyJson().extractingPath("$.id").isEqualTo(REQUEST_ID.toString());
     }
@@ -172,9 +170,9 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnNotFoundWhenRequestDoesNotExist() {
 
-        given(this.activationRequestService.get(TestTokens.SOURCE_SYSTEM, REQUEST_ID)).willThrow(new BusinessServiceException(ErrorEnum.REQUEST_NOT_FOUND));
+        given(activationRequestService.get(REQUEST_ID)).willThrow(new BusinessServiceException(ErrorEnum.REQUEST_NOT_FOUND));
 
-        assertThat(this.mockMvcTester.get().uri(GET_BY_ID_PATH, REQUEST_ID).with(TestTokens.reader()))
+        assertThat(mockMvcTester.get().uri(GET_BY_ID_PATH, REQUEST_ID).with(TestTokens.reader()))
                 .hasStatus(HttpStatus.NOT_FOUND)
                 .hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .bodyJson().extractingPath("$.status").isEqualTo(404);
@@ -183,7 +181,7 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnBadRequestWhenIdIsNotUuid() {
 
-        assertThat(this.mockMvcTester.get().uri(GET_BY_ID_PATH, "not-a-uuid").with(TestTokens.reader()))
+        assertThat(mockMvcTester.get().uri(GET_BY_ID_PATH, "not-a-uuid").with(TestTokens.reader()))
                 .hasStatus(HttpStatus.BAD_REQUEST)
                 .bodyJson().extractingPath("$.errors[0].field").isEqualTo("id");
     }
@@ -191,7 +189,7 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnBadRequestWhenPageSizeExceedsLimit() {
 
-        assertThat(this.mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("size", "500").with(TestTokens.reader()))
+        assertThat(mockMvcTester.get().uri(RouteConstants.ActivationRequest.BASE).param("size", "500").with(TestTokens.reader()))
                 .hasStatus(HttpStatus.BAD_REQUEST)
                 .bodyJson().extractingPath("$.errors[0].field").isEqualTo("size");
     }
@@ -199,29 +197,29 @@ class ActivationRequestControllerTest {
     @Test
     void shouldReturnUnauthorizedWhenThereIsNoToken() {
 
-        assertThat(this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
+        assertThat(mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
                 .hasStatus(HttpStatus.UNAUTHORIZED)
                 .hasContentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .headers().containsHeader(HttpHeaders.WWW_AUTHENTICATE);
 
-        then(this.activationRequestService).shouldHaveNoInteractions();
+        then(activationRequestService).shouldHaveNoInteractions();
     }
 
     @Test
     void shouldReturnForbiddenWhenReadTokenTriesToCreate() {
 
-        assertThat(this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.reader())
+        assertThat(mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.reader())
                 .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
                 .hasStatus(HttpStatus.FORBIDDEN)
                 .bodyJson().extractingPath("$.title").isEqualTo("Forbidden");
 
-        then(this.activationRequestService).shouldHaveNoInteractions();
+        then(activationRequestService).shouldHaveNoInteractions();
     }
 
     @Test
     void shouldReturnForbiddenWhenWriteTokenTriesToRead() {
 
-        assertThat(this.mockMvcTester.get().uri(GET_BY_ID_PATH, REQUEST_ID).with(TestTokens.writer()))
+        assertThat(mockMvcTester.get().uri(GET_BY_ID_PATH, REQUEST_ID).with(TestTokens.writer()))
                 .hasStatus(HttpStatus.FORBIDDEN);
     }
 

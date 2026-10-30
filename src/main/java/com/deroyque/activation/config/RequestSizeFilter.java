@@ -36,9 +36,9 @@ public class RequestSizeFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, FilterChain filterChain)
             throws ServletException, IOException {
 
-        if (httpServletRequest.getContentLengthLong() > this.maxSizeBytes) {
+        if (httpServletRequest.getContentLengthLong() > maxSizeBytes) {
 
-            SecurityConfig.writeError(this.objectMapper, this.problemDetailFactory, httpServletRequest, httpServletResponse, ErrorEnum.PAYLOAD_TOO_LARGE);
+            SecurityConfig.writeError(objectMapper, problemDetailFactory, httpServletRequest, httpServletResponse, ErrorEnum.PAYLOAD_TOO_LARGE);
             return;
         }
 

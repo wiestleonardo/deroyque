@@ -5,6 +5,7 @@ import com.deroyque.activation.enumerator.ErrorEnum;
 import com.deroyque.activation.exception.BusinessServiceException;
 import com.deroyque.activation.repository.ActivationRequestRepository;
 import com.deroyque.activation.service.ActivationRequestService;
+import com.deroyque.activation.service.AuthenticatedSystemService;
 import com.deroyque.activation.support.IntegrationTest;
 import com.deroyque.activation.vo.CreationResultVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
@@ -39,53 +41,57 @@ class DuplicateActivationRequestIT {
     @MockitoBean
     private JwtDecoder jwtDecoder;
 
+    @MockitoBean
+    private AuthenticatedSystemService authenticatedSystemService;
+
     @BeforeEach
     void cleanDatabase() {
 
-        this.activationRequestRepository.deleteAllInBatch();
+        activationRequestRepository.deleteAllInBatch();
     }
 
     @Test
     void shouldReturnExistingRecordWithoutCreatingAnotherWhenRetryHasSameContent() {
 
-        CreationResultVO firstCreation = this.activationRequestService.create(SYSTEM_A, "corr", createDTO("EXT-1", "INTERNET-500"));
-        CreationResultVO retry = this.activationRequestService.create(SYSTEM_A, "corr", createDTO("EXT-1", "INTERNET-500"));
+        CreationResultVO firstCreation = this.createAs(SYSTEM_A, createDTO("EXT-1", "INTERNET-500"));
+        CreationResultVO retry = this.createAs(SYSTEM_A, createDTO("EXT-1", "INTERNET-500"));
 
         assertThat(firstCreation.created()).isTrue();
         assertThat(retry.created()).isFalse();
         assertThat(retry.activationRequestDTO().id()).isEqualTo(firstCreation.activationRequestDTO().id());
-        assertThat(this.activationRequestRepository.count()).isEqualTo(1);
+        assertThat(activationRequestRepository.count()).isEqualTo(1);
     }
 
     @Test
     void shouldThrowDuplicateWhenExternalIdComesWithDifferentContent() {
 
-        CreationResultVO firstCreation = this.activationRequestService.create(SYSTEM_A, "corr", createDTO("EXT-1", "INTERNET-500"));
+        CreationResultVO firstCreation = this.createAs(SYSTEM_A, createDTO("EXT-1", "INTERNET-500"));
 
-        assertThatThrownBy(() -> this.activationRequestService.create(SYSTEM_A, "corr", createDTO("EXT-1", "TV-100")))
+        assertThatThrownBy(() -> this.createAs(SYSTEM_A, createDTO("EXT-1", "TV-100")))
                 .isInstanceOfSatisfying(BusinessServiceException.class, businessServiceException -> {
 
                     assertThat(businessServiceException.getErrorEnum()).isEqualTo(ErrorEnum.DUPLICATE_REQUEST);
                     assertThat(businessServiceException.getProperties()).containsEntry("existingRequestId", firstCreation.activationRequestDTO().id());
                 });
-        assertThat(this.activationRequestRepository.count()).isEqualTo(1);
+        assertThat(activationRequestRepository.count()).isEqualTo(1);
     }
 
     @Test
     void shouldCreateAnotherRecordWhenExternalIdBelongsToAnotherSystem() {
 
-        this.activationRequestService.create(SYSTEM_A, "corr", createDTO("EXT-1", "INTERNET-500"));
+        this.createAs(SYSTEM_A, createDTO("EXT-1", "INTERNET-500"));
 
-        CreationResultVO otherSystemCreation = this.activationRequestService.create("system-b", "corr", createDTO("EXT-1", "INTERNET-500"));
+        CreationResultVO otherSystemCreation = this.createAs("system-b", createDTO("EXT-1", "INTERNET-500"));
 
         assertThat(otherSystemCreation.created()).isTrue();
-        assertThat(this.activationRequestRepository.count()).isEqualTo(2);
+        assertThat(activationRequestRepository.count()).isEqualTo(2);
     }
 
     @Test
     void shouldCreateOnlyOneRecordWhenIdenticalRequestsArriveTogether() throws Exception {
 
         String externalId = "EXT-" + UUID.randomUUID();
+        given(authenticatedSystemService.getSourceSystem()).willReturn("system-a");
         CountDownLatch startSignal = new CountDownLatch(1);
         List<Future<CreationResultVO>> futureList = new ArrayList<>();
 
@@ -97,7 +103,7 @@ class DuplicateActivationRequestIT {
 
                     startSignal.await();
 
-                    return this.activationRequestService.create(SYSTEM_A, "corr", createDTO(externalId, "INTERNET-500"));
+                    return activationRequestService.create(createDTO(externalId, "INTERNET-500"));
                 }));
             }
 
@@ -113,13 +119,20 @@ class DuplicateActivationRequestIT {
             assertThat(resultList).extracting(result -> result.activationRequestDTO().id())
                     .containsOnly(resultList.getFirst().activationRequestDTO().id());
             assertThat(resultList).filteredOn(CreationResultVO::created).hasSize(1);
-            assertThat(this.activationRequestRepository.count()).isEqualTo(1);
+            assertThat(activationRequestRepository.count()).isEqualTo(1);
         }
     }
 
     private static CreateActivationRequestDTO createDTO(String externalId, String productCode) {
 
         return new CreateActivationRequestDTO(externalId, "CUST-1", productCode);
+    }
+
+    private CreationResultVO createAs(String sourceSystem, CreateActivationRequestDTO createActivationRequestDTO) {
+
+        given(authenticatedSystemService.getSourceSystem()).willReturn(sourceSystem);
+
+        return activationRequestService.create(createActivationRequestDTO);
     }
 
 }

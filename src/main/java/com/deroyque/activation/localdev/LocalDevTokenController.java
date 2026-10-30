@@ -42,19 +42,19 @@ public class LocalDevTokenController {
     public ResponseEntity<Map<String, Object>> generateToken(@RequestParam(defaultValue = "local-system") String clientId,
             @RequestParam(defaultValue = DEFAULT_SCOPE) String scope) {
 
-        Instant now = this.clock.instant();
+        Instant now = clock.instant();
 
         JwtClaimsSet jwtClaimsSet = JwtClaimsSet.builder()
-                .issuer(this.localDevProperties.issuer())
+                .issuer(localDevProperties.issuer())
                 .subject(clientId)
-                .audience(this.audienceList)
+                .audience(audienceList)
                 .issuedAt(now)
                 .expiresAt(now.plus(TOKEN_VALIDITY))
                 .claim("client_id", clientId)
                 .claim("scope", scope)
                 .build();
 
-        String token = this.jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), jwtClaimsSet)).getTokenValue();
+        String token = jwtEncoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), jwtClaimsSet)).getTokenValue();
 
         return ResponseEntity.ok(Map.of("access_token", token, "token_type", "Bearer", "expires_in", TOKEN_VALIDITY.toSeconds()));
     }

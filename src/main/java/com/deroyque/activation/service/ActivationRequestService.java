@@ -13,10 +13,10 @@ public interface ActivationRequestService {
      * The same externalId with the same content returns the existing record with {@code created = false};
      * with different content it throws DUPLICATE_REQUEST.
      */
-    public abstract CreationResultVO create(String sourceSystem, String correlationId, CreateActivationRequestDTO createActivationRequestDTO);
+    public abstract CreationResultVO create(CreateActivationRequestDTO createActivationRequestDTO);
 
-    public abstract ActivationRequestDTO get(String sourceSystem, UUID id);
+    public abstract ActivationRequestDTO get(UUID id);
 
-    public abstract PageDTO<ActivationRequestDTO> list(String sourceSystem, String status, String customerId, Integer page, Integer size);
+    public abstract PageDTO<ActivationRequestDTO> list(String status, String customerId, Integer page, Integer size);
 
 }

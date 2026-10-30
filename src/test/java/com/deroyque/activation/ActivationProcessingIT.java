@@ -67,7 +67,7 @@ class ActivationProcessingIT {
     @BeforeEach
     void reset() {
 
-        this.activationRequestRepository.deleteAllInBatch();
+        activationRequestRepository.deleteAllInBatch();
         wireMockExtension.resetAll();
     }
 
@@ -92,7 +92,7 @@ class ActivationProcessingIT {
         String requestId = this.create("corr-flow-2");
 
         this.awaitStatus(requestId, "FAILED");
-        MvcTestResult mvcTestResult = this.mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).with(TestTokens.reader()).exchange();
+        MvcTestResult mvcTestResult = mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).with(TestTokens.reader()).exchange();
         assertThat(mvcTestResult).bodyJson().extractingPath("$.failureReason").isEqualTo("PROVIDER_REJECTED_400");
         assertThat(mvcTestResult).bodyJson().extractingPath("$.attempts").isEqualTo(1);
         wireMockExtension.verify(1, postRequestedFor(urlEqualTo(PROVIDER_PATH)));
@@ -106,7 +106,7 @@ class ActivationProcessingIT {
         String requestId = this.create("corr-flow-3");
 
         this.awaitStatus(requestId, "FAILED");
-        MvcTestResult mvcTestResult = this.mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).with(TestTokens.reader()).exchange();
+        MvcTestResult mvcTestResult = mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).with(TestTokens.reader()).exchange();
         assertThat(mvcTestResult).bodyJson().extractingPath("$.failureReason").isEqualTo("MAX_ATTEMPTS_EXCEEDED:PROVIDER_HTTP_500");
         assertThat(mvcTestResult).bodyJson().extractingPath("$.attempts").isEqualTo(3);
         wireMockExtension.verify(3, postRequestedFor(urlEqualTo(PROVIDER_PATH)));
@@ -131,7 +131,7 @@ class ActivationProcessingIT {
 
     private String create(String correlationId) {
 
-        MvcTestResult mvcTestResult = this.mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
+        MvcTestResult mvcTestResult = mockMvcTester.post().uri(RouteConstants.ActivationRequest.BASE).with(TestTokens.writer())
                 .header("X-Correlation-Id", correlationId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -147,7 +147,7 @@ class ActivationProcessingIT {
     private void awaitStatus(String requestId, String expectedStatus) {
 
         await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(100)).untilAsserted(() ->
-                assertThat(this.mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).with(TestTokens.reader()))
+                assertThat(mockMvcTester.get().uri(GET_BY_ID_PATH, requestId).with(TestTokens.reader()))
                         .hasStatusOk()
                         .bodyJson().extractingPath("$.status").isEqualTo(expectedStatus));
     }

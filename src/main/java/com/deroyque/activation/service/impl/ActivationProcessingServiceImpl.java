@@ -61,8 +61,8 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
     @Override
     public void processPending() {
 
-        List<UUID> idList = this.activationRequestRepository.listIdsReadyToProcess(PROCESSABLE_STATUS_LIST, this.clock.instant(),
-                Limit.of(this.processingProperties.batchSize()));
+        List<UUID> idList = activationRequestRepository.listIdsReadyToProcess(PROCESSABLE_STATUS_LIST, clock.instant(),
+                Limit.of(processingProperties.batchSize()));
 
         if (idList.isEmpty()) {
 
@@ -70,7 +70,7 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
         }
 
         // Kept below the connection pool size: virtual threads do not limit how many tasks ask for a connection at once.
-        Semaphore semaphore = new Semaphore(this.processingProperties.concurrencyLimit());
+        Semaphore semaphore = new Semaphore(processingProperties.concurrencyLimit());
 
         try (ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor()) {
 
@@ -138,9 +138,9 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
 
         try {
 
-            return this.transactionTemplate.execute(transactionStatus -> {
+            return transactionTemplate.execute(transactionStatus -> {
 
-                Optional<ActivationRequest> foundActivationRequest = this.activationRequestRepository.findById(id);
+                Optional<ActivationRequest> foundActivationRequest = activationRequestRepository.findById(id);
 
                 if (foundActivationRequest.isEmpty()) {
 
@@ -148,7 +148,7 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
                 }
 
                 ActivationRequest activationRequest = foundActivationRequest.get();
-                Instant now = this.clock.instant();
+                Instant now = clock.instant();
 
                 if (activationRequest.isLeaseExpired(now)) {
 
@@ -157,7 +157,7 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
                     if (this.isOutOfAttempts(activationRequest)) {
 
                         activationRequest.fail(FailureReasonConstants.MAX_ATTEMPTS_PREFIX + FailureReasonConstants.LEASE_EXPIRED, now);
-                        this.activationRequestRepository.saveAndFlush(activationRequest);
+                        activationRequestRepository.saveAndFlush(activationRequest);
                         this.countTransition(activationRequest);
 
                         return Optional.empty();
@@ -171,9 +171,9 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
                     return Optional.empty();
                 }
 
-                activationRequest.startProcessing(now, this.processingProperties.leaseDuration());
+                activationRequest.startProcessing(now, processingProperties.leaseDuration());
 
-                return Optional.of(this.activationRequestRepository.saveAndFlush(activationRequest));
+                return Optional.of(activationRequestRepository.saveAndFlush(activationRequest));
             });
 
         } catch (ObjectOptimisticLockingFailureException objectOptimisticLockingFailureException) {
@@ -186,11 +186,11 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
 
     private ActivationResultVO callProvider(ActivationRequest activationRequest) {
 
-        Timer.Sample sample = Timer.start(this.meterRegistry);
+        Timer.Sample sample = Timer.start(meterRegistry);
 
-        ActivationResultVO activationResultVO = this.activationProviderIntercommService.activate(activationRequest);
+        ActivationResultVO activationResultVO = activationProviderIntercommService.activate(activationRequest);
 
-        sample.stop(this.meterRegistry.timer(PROVIDER_CALLS_METRIC, OUTCOME_TAG, this.getOutcomeTag(activationResultVO)));
+        sample.stop(meterRegistry.timer(PROVIDER_CALLS_METRIC, OUTCOME_TAG, this.getOutcomeTag(activationResultVO)));
 
         log.info("Provider returned {} for activation request {} on attempt {}", activationResultVO, activationRequest.getId(),
                 activationRequest.getAttempts());
@@ -202,9 +202,9 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
 
         try {
 
-            this.transactionTemplate.executeWithoutResult(transactionStatus -> {
+            transactionTemplate.executeWithoutResult(transactionStatus -> {
 
-                ActivationRequest activationRequest = this.activationRequestRepository.findById(claimedActivationRequest.getId()).orElseThrow();
+                ActivationRequest activationRequest = activationRequestRepository.findById(claimedActivationRequest.getId()).orElseThrow();
 
                 if (!ObjectUtil.isEquals(activationRequest.getVersion(), claimedActivationRequest.getVersion())) {
 
@@ -212,7 +212,7 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
                     return;
                 }
 
-                Instant now = this.clock.instant();
+                Instant now = clock.instant();
 
                 switch (activationResultVO) {
                     case Success success -> activationRequest.complete(now);
@@ -220,10 +220,10 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
                     case TransientFailure transientFailure when this.isOutOfAttempts(activationRequest) ->
                             activationRequest.fail(FailureReasonConstants.MAX_ATTEMPTS_PREFIX + transientFailure.reason(), now);
                     case TransientFailure transientFailure -> activationRequest.scheduleRetry(transientFailure.reason(),
-                            now.plus(this.retryPolicyVO.calculateDelay(activationRequest.getAttempts(), transientFailure.retryAfter())), now);
+                            now.plus(retryPolicyVO.calculateDelay(activationRequest.getAttempts(), transientFailure.retryAfter())), now);
                 }
 
-                this.activationRequestRepository.saveAndFlush(activationRequest);
+                activationRequestRepository.saveAndFlush(activationRequest);
                 this.countTransition(activationRequest);
             });
 
@@ -235,12 +235,12 @@ public class ActivationProcessingServiceImpl implements ActivationProcessingServ
 
     private Boolean isOutOfAttempts(ActivationRequest activationRequest) {
 
-        return IntegerUtil.greaterOrEqual(activationRequest.getAttempts(), this.processingProperties.maxAttempts());
+        return IntegerUtil.greaterOrEqual(activationRequest.getAttempts(), processingProperties.maxAttempts());
     }
 
     private void countTransition(ActivationRequest activationRequest) {
 
-        this.meterRegistry.counter(TRANSITIONS_METRIC, STATUS_TAG, activationRequest.getStatus().name()).increment();
+        meterRegistry.counter(TRANSITIONS_METRIC, STATUS_TAG, activationRequest.getStatus().name()).increment();
     }
 
     private String getOutcomeTag(ActivationResultVO activationResultVO) {
