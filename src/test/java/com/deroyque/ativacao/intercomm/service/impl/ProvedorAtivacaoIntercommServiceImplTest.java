@@ -41,7 +41,7 @@ class ProvedorAtivacaoIntercommServiceImplTest {
     void configurar() {
 
         ProvedorAtivacaoProperties provedorAtivacaoProperties = new ProvedorAtivacaoProperties(wireMockExtension.baseUrl(), Duration.ofSeconds(1),
-                Duration.ofMillis(500), "chave-provedor");
+                Duration.ofSeconds(1), "chave-provedor");
 
         this.provedorAtivacaoIntercommServiceImpl = new ProvedorAtivacaoIntercommServiceImpl(
                 new HttpClientConfig().provedorAtivacaoClient(RestClient.builder(), new IntegracaoErrorHandler(), provedorAtivacaoProperties));
@@ -114,7 +114,7 @@ class ProvedorAtivacaoIntercommServiceImplTest {
     @Test
     void devePermitirNovaTentativaQuandoProvedorResponderDepoisDoTimeout() {
 
-        wireMockExtension.stubFor(post(ROTA_ATIVAR).willReturn(aResponse().withStatus(200).withFixedDelay(1500)));
+        wireMockExtension.stubFor(post(ROTA_ATIVAR).willReturn(aResponse().withStatus(200).withFixedDelay(2500)));
 
         this.assertFalha("PROVIDER_TIMEOUT", true, null);
     }

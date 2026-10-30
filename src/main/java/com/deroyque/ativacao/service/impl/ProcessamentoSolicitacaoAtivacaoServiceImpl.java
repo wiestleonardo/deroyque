@@ -19,7 +19,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
@@ -41,37 +40,39 @@ public class ProcessamentoSolicitacaoAtivacaoServiceImpl implements Processament
     @Override
     public void processarPendentes() {
 
-        List<UUID> listaIdSolicitacaoAtivacao = solicitacaoAtivacaoRepository.listarIdProntoParaProcessar(LISTA_SITUACAO_PROCESSAVEL, clock.instant(),
-                Limit.of(processamentoProperties.tamanhoLote()));
+        // Uma consulta traz o lote inteiro; o loop só existe porque cada solicitação é uma chamada ao provedor.
+        List<SolicitacaoAtivacao> listaSolicitacaoAtivacao = solicitacaoAtivacaoRepository.listarProntoParaProcessar(LISTA_SITUACAO_PROCESSAVEL,
+                clock.instant(), Limit.of(processamentoProperties.tamanhoLote()));
 
-        for (UUID idSolicitacaoAtivacao : listaIdSolicitacaoAtivacao) {
+        for (SolicitacaoAtivacao solicitacaoAtivacao : listaSolicitacaoAtivacao) {
 
             try {
 
-                this.processar(idSolicitacaoAtivacao);
+                this.processar(solicitacaoAtivacao);
 
             } catch (RuntimeException runtimeException) {
 
-                log.error("Falha não prevista ao processar a solicitação {}", idSolicitacaoAtivacao, runtimeException);
+                log.error("Falha não prevista ao processar a solicitação {}", solicitacaoAtivacao.getIdSolicitacaoAtivacao(), runtimeException);
             }
         }
     }
 
     @Override
-    public void processar(UUID idSolicitacaoAtivacao) {
+    public void processar(SolicitacaoAtivacao solicitacaoAtivacao) {
 
-        SolicitacaoAtivacao solicitacaoAtivacao = this.reservar(idSolicitacaoAtivacao);
+        SolicitacaoAtivacao solicitacaoAtivacaoReservada = this.reservar(solicitacaoAtivacao);
 
-        if (solicitacaoAtivacao == null) {
+        if (solicitacaoAtivacaoReservada == null) {
 
             return;
         }
 
-        CorrelacaoUtil.definir(solicitacaoAtivacao.getCodigoCorrelacao() == null ? idSolicitacaoAtivacao.toString() : solicitacaoAtivacao.getCodigoCorrelacao());
+        CorrelacaoUtil.definir(solicitacaoAtivacaoReservada.getCodigoCorrelacao() == null ? solicitacaoAtivacaoReservada.getIdSolicitacaoAtivacao().toString()
+                : solicitacaoAtivacaoReservada.getCodigoCorrelacao());
 
         try {
 
-            this.chamarProvedor(solicitacaoAtivacao);
+            this.chamarProvedor(solicitacaoAtivacaoReservada);
 
         } finally {
 
@@ -80,19 +81,14 @@ public class ProcessamentoSolicitacaoAtivacaoServiceImpl implements Processament
     }
 
     // O provedor é chamado fora de transação; o @Version garante que só uma instância reserve e grave cada solicitação.
-    private SolicitacaoAtivacao reservar(UUID idSolicitacaoAtivacao) {
+    private SolicitacaoAtivacao reservar(SolicitacaoAtivacao solicitacaoAtivacao) {
 
-        SolicitacaoAtivacao solicitacaoAtivacao = solicitacaoAtivacaoRepository.findById(idSolicitacaoAtivacao).orElse(null);
         Instant agora = clock.instant();
-
-        if (solicitacaoAtivacao == null) {
-
-            return null;
-        }
 
         if (solicitacaoAtivacao.isReservaExpirada(agora)) {
 
-            log.warn("Reserva expirada na solicitação {} após {} tentativas", idSolicitacaoAtivacao, solicitacaoAtivacao.getQuantidadeTentativa());
+            log.warn("Reserva expirada na solicitação {} após {} tentativas", solicitacaoAtivacao.getIdSolicitacaoAtivacao(),
+                    solicitacaoAtivacao.getQuantidadeTentativa());
 
             if (solicitacaoAtivacao.getQuantidadeTentativa() >= processamentoProperties.quantidadeMaximaTentativa()) {
 

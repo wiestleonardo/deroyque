@@ -17,7 +17,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,9 +52,9 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
     @Test
     void deveConcluirQuandoProvedorAtivar() {
 
-        this.prepararBuscaEGravacao();
+        this.prepararGravacao();
 
-        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao());
+        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao);
 
         assertThat(this.solicitacaoAtivacao.getSituacao()).isEqualTo(SituacaoSolicitacaoAtivacaoEnum.COMPLETED);
         assertThat(this.solicitacaoAtivacao.getQuantidadeTentativa()).isEqualTo(1);
@@ -64,10 +63,10 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
     @Test
     void deveFalharSemNovaTentativaQuandoProvedorRecusar() {
 
-        this.prepararBuscaEGravacao();
+        this.prepararGravacao();
         this.prepararFalhaProvedor(new IntegracaoException("PROVIDER_REJECTED_400", false, null));
 
-        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao());
+        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao);
 
         assertThat(this.solicitacaoAtivacao.getSituacao()).isEqualTo(SituacaoSolicitacaoAtivacaoEnum.FAILED);
         assertThat(this.solicitacaoAtivacao.getMotivoFalha()).isEqualTo("PROVIDER_REJECTED_400");
@@ -76,10 +75,10 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
     @Test
     void deveAgendarNovaTentativaComEsperaQuandoFalhaPermitirNovaTentativa() {
 
-        this.prepararBuscaEGravacao();
+        this.prepararGravacao();
         this.prepararFalhaProvedor(new IntegracaoException("PROVIDER_HTTP_500", true, null));
 
-        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao());
+        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao);
 
         assertThat(this.solicitacaoAtivacao.getSituacao()).isEqualTo(SituacaoSolicitacaoAtivacaoEnum.PENDING);
         assertThat(this.solicitacaoAtivacao.getDataProximaTentativa()).isBetween(AGORA.plusSeconds(10), AGORA.plusSeconds(15));
@@ -88,10 +87,10 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
     @Test
     void deveUsarRetryAfterQuandoProvedorInformar() {
 
-        this.prepararBuscaEGravacao();
+        this.prepararGravacao();
         this.prepararFalhaProvedor(new IntegracaoException("PROVIDER_HTTP_503", true, Duration.ofSeconds(42)));
 
-        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao());
+        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao);
 
         assertThat(this.solicitacaoAtivacao.getDataProximaTentativa()).isEqualTo(AGORA.plusSeconds(42));
     }
@@ -100,10 +99,10 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
     void deveFalharQuandoUltimaTentativaFalhar() {
 
         this.usarTodasTentativasMenosUma();
-        this.prepararBuscaEGravacao();
+        this.prepararGravacao();
         this.prepararFalhaProvedor(new IntegracaoException("PROVIDER_TIMEOUT", true, null));
 
-        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao());
+        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao);
 
         assertThat(this.solicitacaoAtivacao.getSituacao()).isEqualTo(SituacaoSolicitacaoAtivacaoEnum.FAILED);
         assertThat(this.solicitacaoAtivacao.getMotivoFalha()).isEqualTo("MAX_ATTEMPTS_EXCEEDED:PROVIDER_TIMEOUT");
@@ -112,11 +111,10 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
     @Test
     void deveIgnorarQuandoOutraInstanciaReservarAntes() {
 
-        given(solicitacaoAtivacaoRepository.findById(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao())).willReturn(Optional.of(this.solicitacaoAtivacao));
         given(solicitacaoAtivacaoRepository.saveAndFlush(this.solicitacaoAtivacao))
                 .willThrow(new ObjectOptimisticLockingFailureException(SolicitacaoAtivacao.class, this.solicitacaoAtivacao.getIdSolicitacaoAtivacao()));
 
-        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao());
+        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao);
 
         then(provedorAtivacaoIntercommService).shouldHaveNoInteractions();
     }
@@ -125,17 +123,16 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
     void deveReprocessarQuandoReservaExpirar() {
 
         this.solicitacaoAtivacao.iniciarProcessamento(AGORA.minusSeconds(60), Duration.ofSeconds(30));
-        this.prepararBuscaEGravacao();
+        this.prepararGravacao();
 
-        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao());
+        this.processamentoSolicitacaoAtivacaoServiceImpl.processar(this.solicitacaoAtivacao);
 
         assertThat(this.solicitacaoAtivacao.getSituacao()).isEqualTo(SituacaoSolicitacaoAtivacaoEnum.COMPLETED);
         assertThat(this.solicitacaoAtivacao.getQuantidadeTentativa()).isEqualTo(2);
     }
 
-    private void prepararBuscaEGravacao() {
+    private void prepararGravacao() {
 
-        given(solicitacaoAtivacaoRepository.findById(this.solicitacaoAtivacao.getIdSolicitacaoAtivacao())).willReturn(Optional.of(this.solicitacaoAtivacao));
         given(solicitacaoAtivacaoRepository.saveAndFlush(this.solicitacaoAtivacao)).willReturn(this.solicitacaoAtivacao);
     }
 

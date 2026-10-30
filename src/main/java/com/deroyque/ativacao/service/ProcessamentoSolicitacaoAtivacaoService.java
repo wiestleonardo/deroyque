@@ -1,11 +1,11 @@
 package com.deroyque.ativacao.service;
 
-import java.util.UUID;
+import com.deroyque.ativacao.repository.domain.SolicitacaoAtivacao;
 
 public interface ProcessamentoSolicitacaoAtivacaoService {
 
     public abstract void processarPendentes();
 
-    public abstract void processar(UUID idSolicitacaoAtivacao);
+    public abstract void processar(SolicitacaoAtivacao solicitacaoAtivacao);
 
 }

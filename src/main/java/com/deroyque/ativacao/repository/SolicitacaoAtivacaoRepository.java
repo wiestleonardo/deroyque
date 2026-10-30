@@ -31,12 +31,12 @@ public interface SolicitacaoAtivacaoRepository extends JpaRepository<Solicitacao
             Pageable pageable);
 
     @Query("""
-            SELECT solicitacaoAtivacao.idSolicitacaoAtivacao
+            SELECT solicitacaoAtivacao
               FROM SolicitacaoAtivacao solicitacaoAtivacao
              WHERE solicitacaoAtivacao.situacao IN :listaSituacao
                AND solicitacaoAtivacao.dataProximaTentativa <= :agora
              ORDER BY solicitacaoAtivacao.dataProximaTentativa
             """)
-    public abstract List<UUID> listarIdProntoParaProcessar(List<SituacaoSolicitacaoAtivacaoEnum> listaSituacao, Instant agora, Limit limit);
+    public abstract List<SolicitacaoAtivacao> listarProntoParaProcessar(List<SituacaoSolicitacaoAtivacaoEnum> listaSituacao, Instant agora, Limit limit);
 
 }
