@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.BDDMockito.willThrow;
 
 @ExtendWith(MockitoExtension.class)
@@ -143,7 +144,16 @@ class ProcessamentoSolicitacaoAtivacaoServiceImplTest {
         given(solicitacaoAtivacaoRepository.listarProntoParaProcessar(anyList(), eq(AGORA), any(Limit.class)))
                 .willReturn(List.of(solicitacaoAtivacaoComErro, this.solicitacaoAtivacao));
         given(solicitacaoAtivacaoRepository.saveAndFlush(any(SolicitacaoAtivacao.class))).willAnswer(invocacao -> invocacao.getArgument(0));
-        willThrow(new IllegalStateException("erro inesperado")).given(provedorAtivacaoIntercommService).ativar(solicitacaoAtivacaoComErro);
+        // Um stub só para qualquer item: os itens rodam em paralelo, e um stub por argumento falharia conforme a ordem das chamadas.
+        willAnswer(invocacao -> {
+
+            if (invocacao.getArgument(0) == solicitacaoAtivacaoComErro) {
+
+                throw new IllegalStateException("erro inesperado");
+            }
+
+            return null;
+        }).given(provedorAtivacaoIntercommService).ativar(any(SolicitacaoAtivacao.class));
 
         this.processamentoSolicitacaoAtivacaoServiceImpl.processarPendentes();
 
